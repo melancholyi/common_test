@@ -32,6 +32,16 @@ wassersteinDistance.cpp
 add_executable(temp
 temp.cpp        
 )
+
+add_executable(astarNewTest
+astarNewTest.cpp        
+)
+
+add_executable(linearNLP
+linearNLP.cpp        
+)
+
+
 add_executable(isPtsInEllipsoid isPtsInEllipsoid.cpp)
 add_executable(bgkgradtest bgkgradtest.cpp)
 add_executable(arrayMat3d arrayMat3d.cpp)
