@@ -25,9 +25,16 @@ void parallelVersion(int rows, int cols, std::vector<std::vector<int>>& matrix) 
     #pragma omp parallel for collapse(2)
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < cols; ++j) {
-            matrix[i][j] = i * j; // 示例操作
+            matrix[i].push_back(i * j);
         }
     }
+
+#pragma omp parallel for collapse(2)
+for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < cols; ++j) {
+        matrix[i].push_back(i + j);
+    }
+}
 }
 
 int main() {
@@ -50,6 +57,12 @@ int main() {
     end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> parallelTime = end - start;
     std::cout << "Parallel version took " << parallelTime.count() * 1000 << " ms1." << std::endl;
+
+
+    std::vector<int> vec;
+    vec.reserve(10);
+    vec.push_back(1);
+    std::cout << vec.size() << std::endl;;
 
     return 0;
 }
