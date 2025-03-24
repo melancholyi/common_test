@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-03-24 06:17:46
+ * @LastEditTime: 2025-03-24 11:59:25
  * @FilePath: /test/CPP_THIRD_PARTYs/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -11,6 +11,7 @@
 #include <chrono>
 #include <torch/torch.h>
 #include <Eigen/Core>
+#include <cmath>
 
 void compareCPUAndGPUTest(){
   // 设置矩阵大小
@@ -55,7 +56,63 @@ void vec2tensorGPU(){
 }
 
 
+//////////////////////////////////////PART: computeDistMat /////////////////////////////////////////
+using ComputeDistMatFunType = std::function<void(const torch::Tensor&, const torch::Tensor&, torch::Tensor&)>;
+const double M2PI = 2.0 * M_PI;
+const double kernelScaler_ = 1.0;
+
+void computeDistMat(const torch::Tensor& predX, const torch::Tensor& trainX, torch::Tensor& distMat){
+  int num_pred = predX.size(0);
+  int num_train = trainX.size(0);
+  int num_dim = predX.size(1);
+
+  auto predX_broadcast = predX.unsqueeze(1).expand({num_pred, num_train, num_dim});
+  auto trainX_broadcast = trainX.unsqueeze(0).expand({num_pred, num_train, num_dim});
+  auto diff = predX_broadcast - trainX_broadcast;
+
+  distMat = (diff * diff).sum({2}).sqrt();
+}
+
+void covSparse(const torch::Tensor& distMat, torch::Tensor& kernel) {
+  kernel = ((2.0 + (distMat * M2PI).cos()) * (1.0 - distMat) / 3.0 +
+                  (distMat * M2PI).sin() / M2PI) * kernelScaler_;
+
+  // // kernel's elem is masked with 0.0 if dist > kernelLen_
+  kernel = kernel * (kernel > 0.0).to(torch::kFloat64);
+}
+
+
+void computeDistAndcovSparse(){
+  std::vector<double> predXvec{1, 2, 3, 4,
+    5, 6, 7, 8,
+    9, 10, 11, 12};
+
+  std::vector<double> trainXvec{1, 2, 3, 4, 
+      5, 6, 7, 8, 
+      9, 10,11, 12, 
+      13, 14, 15, 16, 
+      17, 18, 19, 20};
+
+  int INPUT_DIM = 4;
+  torch::Tensor predX = torch::from_blob(predXvec.data(), {(int64_t)(predXvec.size()/INPUT_DIM), INPUT_DIM}, torch::kFloat64).to(torch::kCUDA);
+  torch::Tensor trainX = torch::from_blob(trainXvec.data(), {(int64_t)(trainXvec.size()/INPUT_DIM), INPUT_DIM}, torch::kFloat64).to(torch::kCUDA);
+  torch::Tensor distMat;
+  auto computeDistMatFunc_ = std::bind(&computeDistMat, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  computeDistMatFunc_(predX, trainX, distMat);
+  std::cout << "=====OUT distMat: \n" << distMat << std::endl;
+
+  torch::Tensor kernel;
+  covSparse(distMat, kernel);
+  std::cout << "=====OUT kernel: \n" << kernel << std::endl;
+  
+  auto kernel_mult = kernel.matmul(trainX);
+  std::cout << "=====OUT kernel_mult: \n" << kernel_mult << std::endl;
+  
+}
+
+
 int main() {
+  //! PART: 0 test
   std::cout << "Libtorch version: " << TORCH_VERSION << std::endl;
 
   torch::Device device(torch::kCPU);
@@ -66,6 +123,7 @@ int main() {
     std::cout << "=====Training on CPU." << std::endl;
   }
 
+  //! PART: 1 basic usage
   std::cout << "\n==========basic usage==========\n";
   // 创建一个(2,3)张量
   torch::Tensor tensor = torch::randn({2, 3}).to(device);
@@ -76,10 +134,11 @@ int main() {
   std::cout << "\nWelcome to LibTorch!" << std::endl;
 
 
+  //! PART: 2 compareCPUAndGPU
   std::cout << "\n==========compareCPUAndGPU==========\n";
   compareCPUAndGPUTest();
 
-  
+  //! PART: 3 Eigen Decomposition
   std::cout << "\n==========Eigen Decomposition==========\n";
   // Eigen decomposition
   torch::Tensor tensor1 = torch::arange(1.0, 10.0).reshape({3, 3});
@@ -91,8 +150,16 @@ int main() {
   auto tensor1_sin = tensor1.sqrt();
   std::cout << "tensor1_sin: " << tensor1_sin << std::endl;
   
-
+  //! PART: 4 vec2tensor2EigMatrix
+  std::cout << "\n==========vec2tensor2EigMatrix==========\n";
   vec2tensorGPU();
+
+  //! PART: 5 computeDistMat and covSparse
+  std::cout << "\n==========computeDist and covSparse==========\n";
+  computeDistAndcovSparse();
+
+
+
 
 
 

@@ -37,9 +37,9 @@ add_executable(astarNewTest
 astarNewTest.cpp        
 )
 
-add_executable(linearNLP
-linearNLP.cpp        
-)
+# add_executable(linearNLP
+# linearNLP.cpp        
+# )
 
 
 add_executable(isPtsInEllipsoid isPtsInEllipsoid.cpp)

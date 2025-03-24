@@ -1,7 +1,7 @@
 /*
  * @Author: chasey melancholycy@gmail.com
  * @Date: 2024-12-17 04:13:31
- * @FilePath: /mesh_planner/test/cpp/main.cpp
+ * @FilePath: /test/CPP/main.cpp
  * @Description: 
  * 
  * Copyright (c) 2024 by chasey (melancholycy@gmail.com), All Rights Reserved. 
@@ -276,6 +276,21 @@ void transformVoxel(){
     
 }
 
+template<typename T>
+class TypeTest{
+    public:
+    TypeTest(T data){
+        if constexpr (std::is_same_v<T, double>) {
+            // dtype_ = torch::kFloat64;
+            std::cout << "double type" << std::endl;
+          } else if constexpr (std::is_same_v<T, float>) {
+            // dtype_ = torch::kFloat32;
+            std::cout << "float type" << std::endl;
+          } else {
+            static_assert("T must be float or double");
+          }
+    }
+};
 
 
 int main() {
@@ -735,7 +750,8 @@ int main() {
 
 
     //////////////////////////////////////////////////////////////////////////////////
-
+    TypeTest<float> typeTest1(1.0);
+    TypeTest<double> typeTest2(1.0);    
 
     return 0;
 }
