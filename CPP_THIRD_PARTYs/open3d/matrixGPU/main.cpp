@@ -264,6 +264,8 @@ int main() {
                                 13, 14, 15, 16, 
                                 17, 18, 19, 20};
 
+            
+        
 
     O3DDType dtype_ = O3DDType::Float64;
     O3DDeviceType device_ = O3DDeviceType("CUDA:0");
@@ -275,6 +277,7 @@ int main() {
 
     O3DTensorType predX = O3DTensorType(predXvec, {(int)predXvec.size() / INPUT_DIM, INPUT_DIM}, dtype_, device_);
     std::cout << "=====predX: \n" << predX.ToString() << std::endl;
+
     
     O3DTensorType distMat;
 
