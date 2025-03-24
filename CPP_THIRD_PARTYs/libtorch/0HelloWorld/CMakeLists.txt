@@ -10,7 +10,11 @@ include_directories(/usr/local/include/libtorch/include)
 # Add the path to LibTorch libraries
 link_directories(/usr/local/include/libtorch/lib)
 
+find_package(Eigen3 REQUIRED)
 find_package(Torch REQUIRED)
+
+include_directories(${EIGEN3_INCLUDE_DIR})
+
 add_executable(tensorHelloWorld tensorHelloWorld.cpp)
 
 

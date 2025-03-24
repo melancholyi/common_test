@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-03-24 03:40:38
+ * @LastEditTime: 2025-03-24 06:17:46
  * @FilePath: /test/CPP_THIRD_PARTYs/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -10,6 +10,7 @@
 #include <iostream>
 #include <chrono>
 #include <torch/torch.h>
+#include <Eigen/Core>
 
 void compareCPUAndGPUTest(){
   // 设置矩阵大小
@@ -38,7 +39,22 @@ void compareCPUAndGPUTest(){
   std::cout << "GPU matmul time: " << gpu_duration.count() << " seconds" << std::endl;
 }
 
-using namespace at;
+void vec2tensorGPU(){
+  std::vector<double> vec = {1, 2, 3, 4, 5, 6};
+  torch::Tensor tensor = torch::from_blob(vec.data(), {3, 2}, torch::kFloat64).to(torch::kCUDA);
+  std::cout << "====vec2tensor\n" << tensor << std::endl;
+  
+  
+  // 将CUDA张量转移到CPU上 将CPU张量转换为Eigen::MatrixXd
+  torch::Tensor cpu_tensor_from_cuda = tensor.to(torch::kCPU).contiguous();
+  double* data_ptr = cpu_tensor_from_cuda.data_ptr<double>();  
+  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> mat_tensor(tensor.size(0), tensor.size(1));
+  std::memcpy(mat_tensor.data(), data_ptr, tensor.size(0) * tensor.size(1) * sizeof(double));
+  std::cout << "====vec2tensor: mat_tensor\n" << mat_tensor << std::endl;
+  
+}
+
+
 int main() {
   std::cout << "Libtorch version: " << TORCH_VERSION << std::endl;
 
@@ -50,7 +66,7 @@ int main() {
     std::cout << "=====Training on CPU." << std::endl;
   }
 
-  
+  std::cout << "\n==========basic usage==========\n";
   // 创建一个(2,3)张量
   torch::Tensor tensor = torch::randn({2, 3}).to(device);
   std::cout << "=====tensor: origin tensor\n" << tensor << std::endl;
@@ -63,6 +79,8 @@ int main() {
   std::cout << "\n==========compareCPUAndGPU==========\n";
   compareCPUAndGPUTest();
 
+  
+  std::cout << "\n==========Eigen Decomposition==========\n";
   // Eigen decomposition
   torch::Tensor tensor1 = torch::arange(1.0, 10.0).reshape({3, 3});
   auto eig = torch::linalg::eig(tensor1);
@@ -74,7 +92,7 @@ int main() {
   std::cout << "tensor1_sin: " << tensor1_sin << std::endl;
   
 
-  torch:
+  vec2tensorGPU();
 
 
 
