@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-03-24 11:59:25
+ * @LastEditTime: 2025-03-25 14:52:37
  * @FilePath: /test/CPP_THIRD_PARTYs/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -101,6 +101,10 @@ void computeDistAndcovSparse(){
   computeDistMatFunc_(predX, trainX, distMat);
   std::cout << "=====OUT distMat: \n" << distMat << std::endl;
 
+  std::cout << "=====torch.cdist() compute distance between vectors" << std::endl;
+  auto cdist = torch::cdist(predX, trainX);//NOTE： eulidean distance matrix between two tensor. auto cdist_mat = torch::cdist(tensor1, tensor2)!!![3 x 2] [4 x 2] -> [3 x 4]
+  std::cout << "=====cdist fun: \n" << cdist << std::endl;
+
   torch::Tensor kernel;
   covSparse(distMat, kernel);
   std::cout << "=====OUT kernel: \n" << kernel << std::endl;
@@ -108,6 +112,76 @@ void computeDistAndcovSparse(){
   auto kernel_mult = kernel.matmul(trainX);
   std::cout << "=====OUT kernel_mult: \n" << kernel_mult << std::endl;
   
+}
+
+
+//////////////////////////////////////PART: create 10x10 matrix3d /////////////////////////////////////////
+void create10X10Cov3d(){
+  torch::Tensor diag_elements = torch::arange(0, 10 * 10 * 3).view({10, 10, 3});
+  std::cout << "=====diag_elements: \n" << diag_elements << std::endl;
+  torch::Tensor identity_matrix = torch::eye(3);
+  torch::Tensor tensor = diag_elements.unsqueeze(-1) * identity_matrix;
+  // std::cout << "=====tensor: \n" << tensor << std::endl;
+  tensor = tensor.view({10, 10, 3, 3});
+  // std::cout << "=====view over tensor: \n" << tensor << std::endl;
+
+  std::cout << "Matrix at position (0,0):" << std::endl;
+  std::cout << tensor.index({0, 0, 1, 1}) << std::endl;
+}
+
+
+/////////////////////////////////////PART: more useful function test /////////////////////////////////////////
+void moreUsefulFuncsTest(){
+  ////////////////////////////////////// torch::outer /////////////////////////////////////////
+  // Create two 1D tensors
+  at::Tensor a = torch::tensor({1, 2, 3}, torch::kFloat64);
+  at::Tensor b = torch::tensor({4, 5, 6}, torch::kFloat64);
+
+  at::Tensor outer_product = torch::outer(a, b);
+
+  // Print the result
+  std::cout << "Tensor a: " << a << std::endl << "Tensor b: " << b << std::endl;
+  std::cout << "Outer product:" << std::endl << outer_product << std::endl;
+
+  ////////////////////////////////////// torch::norm /////////////////////////////////////////
+
+  auto a_norm = a.norm(2, 0, true); // p = 2(norm formulation) dim = 0(operate on columns) keepdim = true(keep the dimension)
+  /*
+  a_norm:  3.7417,  sqrt(1^2 + 2^2 + 3^2) = 3.7417
+  [ CPUDoubleType{1} ]
+  */
+  std::cout << "===== a.norm(2, 0, true): " << a_norm << std::endl;
+  torch::Tensor a_normed = a/a_norm;
+  std::cout << "===== a/a_norm: \n" << a_normed << std::endl;
+  torch::Tensor a_norm_detach = a_normed.detach();
+}
+
+/////////////////////////////////////PART: torch::detach /////////////////////////////////////////
+void torchDetachTest(){
+  // ===== didn't use detach
+  torch::Tensor a1 = torch::tensor({{1.0, 2.0}, {3.0, 4.0}}, torch::requires_grad());
+  torch::Tensor b1 = a1 * 2;
+  torch::Tensor c1 = b1 + b1;
+  c1.sum().backward();// c1 = 4 * a1  d(c1)/d(a1) = 4
+  /*
+  在 PyTorch 和 LibTorch 中，backward() 函数用于执行反向传播，计算梯度。但是，backward() 函数需要一个标量（scalar）作为输入，因为它计算的是标量关于张量的梯度。
+  如果直接对一个多元素的张量调用 backward()，会报错，因为无法确定如何对一个非标量张量进行梯度计算。
+  为什么需要 sum()？
+  当你有一个多元素的张量（例如一个矩阵或向量）时，你需要将其转换为一个标量，以便能够调用 backward()。sum() 函数的作用是将张量的所有元素相加，从而生成一个标量。这样，你就可以对这个标量调用 backward() 来计算梯度。
+  为什么需要标量？
+  在反向传播中，梯度是通过链式法则计算的。链式法则要求从一个标量输出开始，逐步计算每个张量的梯度。如果输入不是一个标量，链式法则无法正常工作，因为无法确定如何从一个非标量张量开始计算梯度。
+  */
+  std::cout << "Gradients of a (without detach):\n" << a1.grad() << std::endl;
+
+
+  // ===== use detach
+  torch::Tensor a2 = torch::tensor({{1.0, 2.0}, {3.0, 4.0}}, torch::requires_grad());
+  torch::Tensor b2 = a2 * 2;
+  auto b2_detached = b2.detach();
+  torch::Tensor c2 = b2_detached + b2_detached;
+  // c2.sum().backward();// error, because auto b2_detached = b2.detach(); the autograd was detach at b2.
+  b2.sum().backward();// The autograd computation graph is end at b2, so the gradients of a2 is 2
+  std::cout << "Gradients of a (with detach at b2_detached):\n" << a2.grad() << std::endl;
 }
 
 
@@ -159,6 +233,17 @@ int main() {
   computeDistAndcovSparse();
 
 
+  //! PART: 6 create 10x10 matrix3d  
+  std::cout << "\n==========create 10x10 matrix3d==========\n";
+  create10X10Cov3d();
+
+  //! PART: 7 more useful functions  
+  std::cout << "\n==========more useful functions==========\n";
+  moreUsefulFuncsTest();
+
+  //! PART: 8 torch::detach
+  std::cout << "\n==========torch::detach==========\n";
+  torchDetachTest();
 
 
 
