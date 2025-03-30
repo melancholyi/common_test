@@ -3,17 +3,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-# 0. parameters  
+# 1. 生成带噪声的3D高程数据 (PyTorch Tensor)
 torch.manual_seed(42)
+delta = 1e-5
 N = 200
 D = 2
-noise_data = 0.01
-optimizer_type = 'LBFGS'
-optim_lr = 0.005
+noise_data = 0.0001
+optimizer_type = 'Adam'  # or 'LBFGS'
+optim_lr = 0.001
 optim_maxiter = 100
+optim_epochs = 10 if optimizer_type == 'LBFGS' else 100
 
+klen_array = torch.arange(0.1, 1.0 + delta, 0.2)
+input_dim = 2 
+hidden_dim = 8 
+output_dim = len(klen_array)
+print(f'klen_array: {klen_array}')
 
-# 1. 生成带噪声的3D高程数据 (PyTorch Tensor)
 X_train = torch.rand(N, D) * 10  # NOTE:(100, 2)
 true_elevation = lambda x: 2 * torch.sin(x[:, 0]) + 3 * torch.cos(x[:, 1]) + x[:, 0] + x[:, 1]
 y_train = true_elevation(X_train) + torch.randn(N) * noise_data  # NOTE:(100,)
@@ -39,6 +45,39 @@ class ThreeLayerTanhNN(torch.nn.Sequential):
         if softmax:
             self.add_module("activation3", torch.nn.Softmax(dim=1))
 
+class AttentiveKernelNN(torch.nn.Module):
+    def __init__(self, dim_input: int, dim_hidden: int, dim_output: int, softmax: bool = True) -> None:
+        super().__init__()
+        self.nn_weight = ThreeLayerTanhNN(dim_input, dim_hidden, dim_output, softmax)
+        self.nn_instanse = ThreeLayerTanhNN(dim_input, dim_hidden, dim_output, softmax)
+
+        
+
+train_instance_selection = True 
+weightNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim)
+instanceNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim)
+# weight_raw = weightNN(X_train)
+# weight_norm = weight_raw / weight_raw.norm(dim=1, keepdim=True)  # 归一化权重
+# for param in weightNN.named_parameters():
+#     print(f'weightNN param: {param}')
+
+
+def getNNWeight(X, detach_w=False):
+    raw_w = weightNN(X)
+    _w = raw_w / raw_w.norm(dim=1, keepdim=True)
+    w = _w.detach() if detach_w else _w
+    return w
+
+def get_representations(X, detach_w=False, detach_z=False):
+    raw_w = weightNN(X)
+    _w = raw_w / raw_w.norm(dim=1, keepdim=True)
+    w = _w.detach() if detach_w else _w
+
+    raw_z = instanceNN(X)
+    _z = raw_z / raw_z.norm(dim=1, keepdim=True)
+    z = _z.detach() if detach_z else _z
+
+    return w, z
 
 def attentiveKernel(X, Z, klen_array):
     """
@@ -47,6 +86,25 @@ def attentiveKernel(X, Z, klen_array):
     klen_array: NOTE:shape (klen_array,)
     return: NOTE:shape (n, m)
     """
+    # wx = getNNWeight(X, detach_w=True)
+    # wz = getNNWeight(Z, detach_w=True)
+    if train_instance_selection:
+        w1, z1 = get_representations(X, detach_w=True)
+        w2, z2 = get_representations(Z, detach_w=True)
+    else :
+        print(f'now detaching w1, w2')
+        w1, z1 = get_representations(X, detach_z=True)
+        w2, z2 = get_representations(Z, detach_z=True)
+    mask = z1 @ z2.t()
+    cov_mat = 0.0
+    sim_list = []
+    for i in range(len(klen_array)):
+        similarity = torch.outer(w1[:, i], w2[:, i])  # (n, m)
+        sim_list.append(similarity)
+        klen = klen_array[i]
+        cov_mat += rbf_kernel(X, Z, klen) * similarity
+    # print(f'sim_list: {sim_list}')
+    return cov_mat
 
 
 # 3. 负对数边际似然函数 (PyTorch可微分版本)
@@ -59,7 +117,13 @@ def negative_log_mll(params, X, y, mu0, sigma):
     sigma: prior variance (scalar)
     """
     lambda_, l = params
-    K = rbf_kernel(X, X, l)  # NOTE:(N, N)
+    K_RBF = rbf_kernel(X, X, l)  # NOTE:(N, N)
+    # print(f'K_RBF.shape: {K_RBF.shape}')
+    K_AK = attentiveKernel(X, X, klen_array)  # NOTE:(N, N)
+    # print(f'K_AK.shape: {K_AK.shape}')
+
+    K = K_AK
+
     N = X.shape[0]
     
     """
@@ -84,17 +148,18 @@ def negative_log_mll(params, X, y, mu0, sigma):
 
 # 4. 超参数优化 (PyTorch LBFGS)
 # 初始化可训练参数
-lambda_ = torch.tensor([1.0], requires_grad=True, dtype=torch.float32)
-l = torch.tensor([1.0], requires_grad=True, dtype=torch.float32)
+lambda_ = torch.tensor([0.0], requires_grad=True, dtype=torch.float32)
+l = torch.tensor([10.0], requires_grad=True, dtype=torch.float32)
 mu0 = torch.mean(y_train).detach()
 sigma = torch.tensor(1.0, dtype=torch.float32)
 
+params_list = list(weightNN.parameters()) + list(instanceNN.parameters()) # + [lambda_, l]
 if optimizer_type == 'LBFGS':
-    # 使用LBFGS优化器
-    optimizer = torch.optim.LBFGS([lambda_, l], lr=optim_lr, max_iter=optim_maxiter)
+    optimizer = torch.optim.LBFGS(params_list, lr=optim_lr, max_iter=optim_maxiter)
 elif optimizer_type == 'Adam':
-    # 使用Adam优化器
-    optimizer = torch.optim.Adam([lambda_, l], lr=optim_lr)
+    optimizer = torch.optim.Adam(params_list, lr=optim_lr)
+
+print(f'optimizer: {optimizer}')
 
 def closure():
     optimizer.zero_grad()
@@ -103,16 +168,24 @@ def closure():
     return loss
 
 # 运行优化
-for _ in range(10):  # LBFGS可能需要多次调用closure
+for _ in range(optim_epochs):  # LBFGS可能需要多次调用closure
     optimizer.step(closure)
 
-optimal_lambda = lambda_.item() if lambda_.item() > 0.0 else 0.0
+train_instance_selection = False
+for _ in range(optim_epochs):  # LBFGS可能需要多次调用closure
+    optimizer.step(closure)
+
+
+
+
+optimal_lambda = lambda_.item()
 optimal_l = l.item()
 print(f"Optimal lambda: {optimal_lambda:.3f}, Optimal l: {optimal_l:.3f}")
 
 # 5. 预测函数 (修正参数顺序)
 def predict(X_train, y_train, X_test, lambda_, l, mu0, sigma):  # <-- 修正参数列表
-    K_train_test = rbf_kernel(X_test, X_train, l)  # (n_test, n_train)
+    # K_train_test = rbf_kernel(X_test, X_train, l)  # (n_test, n_train)
+    K_train_test = attentiveKernel(X_test, X_train, klen_array)  # (n_test, n_train)
     sum_k = K_train_test.sum(dim=1)  # (n_test,)
     sum_kjyj = K_train_test @ y_train  # (n_test,)
     
