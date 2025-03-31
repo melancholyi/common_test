@@ -13,8 +13,8 @@ optimizer_type = 'Adam'  # or 'LBFGS'
 optim_lr = 0.001
 optim_maxiter = 100
 optim_epochs = 10 if optimizer_type == 'LBFGS' else 100
-
-klen_array = torch.arange(0.1, 1.0 + delta, 0.2)
+base_kernel = 'sparse'  # or 'rbf'
+klen_array = torch.arange(0.1, 1.0 + delta, 0.2) if base_kernel == 'rbf' else torch.arange(0.1, 2.0 + delta, 0.2)
 input_dim = 2 
 hidden_dim = 8 
 output_dim = len(klen_array)
@@ -35,10 +35,6 @@ def sparseKernel(X, Z, l):
     # print(f'kernel_shape: {kernel.shape}')
     return kernel
 
-
-
-
-
 def rbf_kernel(X, Z, l):
     """
     X: NOTE:shape (n, d) 
@@ -48,7 +44,6 @@ def rbf_kernel(X, Z, l):
     pairwise_sq_dists = torch.cdist(X, Z, p=2).square()  # 欧氏距离平方
 
     return torch.exp(-pairwise_sq_dists / (2 * l**2))
-
     
 class ThreeLayerTanhNN(torch.nn.Sequential):
     def __init__(self, dim_input: int, dim_hidden: int, dim_output: int, softmax: bool = True,) -> None:
@@ -67,10 +62,9 @@ class AttentiveKernelNN(torch.nn.Module):
         self.nn_weight = ThreeLayerTanhNN(dim_input, dim_hidden, dim_output, softmax)
         self.nn_instanse = ThreeLayerTanhNN(dim_input, dim_hidden, dim_output, softmax)
 
-        
-
 train_instance_selection = True 
 weightNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim)
+print(f'weightNN model struct:{weightNN}')
 instanceNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim)
 # weight_raw = weightNN(X_train)
 # weight_norm = weight_raw / weight_raw.norm(dim=1, keepdim=True)  # 归一化权重
@@ -119,8 +113,10 @@ def attentiveKernel(X, Z, klen_array):
         similarity = torch.outer(w1[:, i], w2[:, i])  # (n, m)
         sim_list.append(similarity)
         klen = klen_array[i]
-        cov_mat += rbf_kernel(X, Z, klen) * similarity
-        # cov_mat += sparseKernel(X, Z, klen) * similarity
+        if base_kernel == 'rbf':
+            cov_mat += rbf_kernel(X, Z, klen) * similarity
+        else:
+            cov_mat += sparseKernel(X, Z, klen) * similarity
     # print(f'sim_list: {sim_list}')
     cov_mat *= mask
     return cov_mat

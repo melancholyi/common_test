@@ -1,7 +1,7 @@
 '''
 Author: chasey && melancholycy@gmail.com
 Date: 2025-03-27 10:09:14
-LastEditTime: 2025-03-27 12:43:03
+LastEditTime: 2025-03-31 13:42:23
 FilePath: /test/PY_/bgk/bgkInference.py
 Description: 
 Reference: 
@@ -68,7 +68,7 @@ X_test = np.linspace(0, 2 * np.pi, 100)[:, None]
 # Hyperparameter optimization
 mu0 = 0.0
 sigma2 = 0.1**2
-initial_params = [2.0, 1.0, 0.01]  # Initial guess for l, s, lambda_
+initial_params = [0.5, 1.0, 0.01]  # Initial guess for l, s, lambda_
 
 
 # # Optimize hyperparameters
