@@ -2,6 +2,11 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import time
+# 检查GPU是否可用
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+device = torch.device("cpu")    # 强制使用CPU TEST
 
 # 1. 生成带噪声的3D高程数据 (PyTorch Tensor)
 torch.manual_seed(42)
@@ -20,9 +25,9 @@ hidden_dim = 8
 output_dim = len(klen_array)
 print(f'klen_array: {klen_array}')
 
-X_train = torch.rand(N, D) * 10  # NOTE:(100, 2)
+X_train = torch.rand(N, D, device=device) * 10  # NOTE:(100, 2)
 true_elevation = lambda x: 2 * torch.sin(x[:, 0]) + 3 * torch.cos(x[:, 1]) + x[:, 0] + x[:, 1]
-y_train = true_elevation(X_train) + torch.randn(N) * noise_data  # NOTE:(100,)
+y_train = true_elevation(X_train) + torch.randn(N, device = device) * noise_data  # NOTE:(100,)
 
 # 2. 定义PyTorch版本的RBF核函数
 def sparseKernel(X, Z, l):
@@ -63,9 +68,9 @@ class AttentiveKernelNN(torch.nn.Module):
         self.nn_instanse = ThreeLayerTanhNN(dim_input, dim_hidden, dim_output, softmax)
 
 train_instance_selection = True 
-weightNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim)
+weightNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim).to(device)
 print(f'weightNN model struct:{weightNN}')
-instanceNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim)
+instanceNN = ThreeLayerTanhNN(input_dim, hidden_dim, output_dim).to(device)
 # weight_raw = weightNN(X_train)
 # weight_norm = weight_raw / weight_raw.norm(dim=1, keepdim=True)  # 归一化权重
 # for param in weightNN.named_parameters():
@@ -132,7 +137,7 @@ def negative_log_mll(params, X, y, mu0, sigma):
     sigma: prior variance (scalar)
     """
     lambda_, l = params
-    K_AK = attentiveKernel(X, X, klen_array)  # NOTE:(N, N)
+    K_AK = attentiveKernel(X, X, klen_array.to(device))  # NOTE:(N, N)
     
     K = K_AK
 
@@ -160,10 +165,10 @@ def negative_log_mll(params, X, y, mu0, sigma):
 
 # 4. 超参数优化 (PyTorch LBFGS)
 # 初始化可训练参数
-lambda_ = torch.tensor([0.0], requires_grad=True, dtype=torch.float32)
-l = torch.tensor([10.0], requires_grad=True, dtype=torch.float32)
+lambda_ = torch.tensor([0.0], requires_grad=True, dtype=torch.float32, device = device)
+l = torch.tensor([10.0], requires_grad=True, dtype=torch.float32, device = device)
 mu0 = torch.mean(y_train).detach()
-sigma = torch.tensor(1.0, dtype=torch.float32)
+sigma = torch.tensor(1.0, dtype=torch.float32, device = device)
 
 params_list = list(weightNN.parameters()) + list(instanceNN.parameters()) # + [lambda_, l]
 if optimizer_type == 'LBFGS':
@@ -180,6 +185,9 @@ def closure():
     return loss
 
 # 运行优化
+
+time_start = time.time()
+
 for _ in range(optim_epochs):  # LBFGS可能需要多次调用closure
     optimizer.step(closure)
 
@@ -187,16 +195,17 @@ train_instance_selection = False
 for _ in range(optim_epochs):  # LBFGS可能需要多次调用closure
     optimizer.step(closure)
 
-
-
-
 optimal_lambda = lambda_.item()
 optimal_l = l.item()
 print(f"Optimal lambda: {optimal_lambda:.3f}, Optimal l: {optimal_l:.3f}")
 
+time_end = time.time()
+print(f"Training time ms: {(time_end - time_start)*1000:.6f} ms")
+
+
 # 5. 预测函数 (修正参数顺序)
 def predict(X_train, y_train, X_test, lambda_, l, mu0, sigma):  # <-- 修正参数列表
-    K_train_test = attentiveKernel(X_test, X_train, klen_array)  # (n_test, n_train)
+    K_train_test = attentiveKernel(X_test, X_train, klen_array.to(device))  # (n_test, n_train)
     sum_k = K_train_test.sum(dim=1)  # (n_test,)
     sum_kjyj = K_train_test @ y_train  # (n_test,)
     
@@ -206,8 +215,8 @@ def predict(X_train, y_train, X_test, lambda_, l, mu0, sigma):  # <-- 修正参�
     return mu.detach(), var.detach()
 
 # 6. 生成网格测试点 (转换为Tensor)
-x_grid = torch.linspace(0, 10, 30)
-y_grid = torch.linspace(0, 10, 30)
+x_grid = torch.linspace(0, 10, 30, device=device)
+y_grid = torch.linspace(0, 10, 30, device=device)
 X_test = torch.stack(torch.meshgrid(x_grid, y_grid, indexing='xy'), dim=-1).reshape(-1, 2)  # (900, 2)
 
 # 进行预测 (修正调用参数)
@@ -219,13 +228,12 @@ mse = torch.mean((mu_pred - y_test)**2).item()
 print(f"Test MSE: {mse:.4f}")
 
 # 7. 可视化 (转换为NumPy)
-# 7. 三维可视化（完整三视图）
-X_test_np = X_test.numpy()  # 转换为NumPy数组用于可视化
+X_test_np = X_test.cpu().numpy()  # 转换为NumPy数组用于可视化
 X_mesh = X_test_np[:, 0].reshape(30, 30)
 Y_mesh = X_test_np[:, 1].reshape(30, 30)
-Z_mesh_true = true_elevation(X_test).detach().numpy().reshape(30, 30)  # 真实高程
-Z_mesh_pred = mu_pred.numpy().reshape(30, 30)  # 预测高程
-Z_var = var_pred.numpy().reshape(30, 30)  # 预测方差
+Z_mesh_true = true_elevation(X_test).cpu().detach().numpy().reshape(30, 30)  # 真实高程
+Z_mesh_pred = mu_pred.cpu().numpy().reshape(30, 30)  # 预测高程
+Z_var = var_pred.cpu().numpy().reshape(30, 30)  # 预测方差
 
 fig = plt.figure(figsize=(18, 6))
 
@@ -233,14 +241,14 @@ fig = plt.figure(figsize=(18, 6))
 ax1 = fig.add_subplot(131, projection='3d')
 ax1.plot_surface(X_mesh, Y_mesh, Z_mesh_true, 
                 cmap='viridis', alpha=0.8)
-ax1.scatter(X_train[:,0].numpy(), X_train[:,1].numpy(), y_train.numpy(), 
+ax1.scatter(X_train[:,0].cpu().numpy(), X_train[:,1].cpu().numpy(), y_train.cpu().numpy(), 
            c='r', s=20, label='Noisy Data')
 ax1.set_title('True Elevation Map')
 
 # 预测曲面
 ax2 = fig.add_subplot(132, projection='3d')
 surf = ax2.plot_surface(X_mesh, Y_mesh, Z_mesh_pred, cmap='plasma', alpha=0.8)
-ax2.scatter(X_train[:,0].numpy(), X_train[:,1].numpy(), y_train.numpy(), 
+ax2.scatter(X_train[:,0].cpu().numpy(), X_train[:,1].cpu().numpy(), y_train.cpu().numpy(), 
            c='r', s=20)
 ax2.set_title(f'Predicted Elevation\nMSE={mse:.2f}, λ={optimal_lambda:.2f}, l={optimal_l:.2f}')
 fig.colorbar(surf, ax=ax2)

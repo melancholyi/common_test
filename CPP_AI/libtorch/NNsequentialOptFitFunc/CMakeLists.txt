@@ -3,6 +3,7 @@ project(NNsequentialOptFitFunc)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # Export compile commands for clangd
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -O3")
 
 # find_package
 find_package(Eigen3 REQUIRED)
@@ -19,12 +20,15 @@ include_directories(${PYTHON_INCLUDE_DIRS})
 
 # exec and target-link
 add_executable(NNsequentialOptFitFunc NNsequentialOptFitFunc.cpp)
-add_executable(sinFittingTest sinFittingTest.cpp)
-add_executable(sinFittingTest2 sinFittingTest2.cpp)
+add_executable(nnFittingFunc nnFittingFunc.cpp)
+add_executable(nnFittingFunc2 nnFittingFunc2.cpp)
+add_executable(polyFittingFunc polyFittingFunc.cpp)
 
 target_link_libraries(NNsequentialOptFitFunc  ${TORCH_LIBRARIES})
 target_link_libraries(NNsequentialOptFitFunc  ${PYTHON_LIBRARIES})
-target_link_libraries(sinFittingTest  ${TORCH_LIBRARIES})
-target_link_libraries(sinFittingTest   ${PYTHON_LIBRARIES})
-target_link_libraries(sinFittingTest2  ${TORCH_LIBRARIES})
-target_link_libraries(sinFittingTest2   ${PYTHON_LIBRARIES})
+target_link_libraries(nnFittingFunc  ${TORCH_LIBRARIES})
+target_link_libraries(nnFittingFunc   ${PYTHON_LIBRARIES})
+target_link_libraries(nnFittingFunc2  ${TORCH_LIBRARIES})
+target_link_libraries(nnFittingFunc2   ${PYTHON_LIBRARIES})
+target_link_libraries(polyFittingFunc  ${TORCH_LIBRARIES})
+target_link_libraries(polyFittingFunc   ${PYTHON_LIBRARIES})
