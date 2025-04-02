@@ -118,6 +118,32 @@ int main() {
 
     testWithoutTorchNNModule();
 
+
+    // test tensor grad
+    auto kernelLen_ = {1.0, 0.5, 1.0};
+    auto dtype_ = torch::kFloat64;
+    auto device_ = torch::kCUDA;
+    torch::Tensor klens = torch::tensor({1.0, 0.5, 1.0}, torch::requires_grad());
+    std::cout << "====klens value: \n" << klens << std::endl;
+    std::cout << "====klens shape: " << klens.sizes() << std::endl;
+    std::cout << "====klens dtype: " << klens.dtype() << std::endl;
+    std::cout << "====klens device: " << klens.device() << std::endl;
+
+    torch::Tensor yklens = klens * klens;
+    torch::Tensor zklens = 2 * y;
+
+    zklens.sum().backward();
+    std::cout << "====klens grad: \n" << klens.grad() << std::endl;
+
+
+
+
+    torch::Tensor a1 = torch::tensor({{1.0, 2.0}, {3.0, 4.0}}, torch::requires_grad());
+    torch::Tensor b1 = a1 * 2;
+    torch::Tensor c1 = b1 + b1;
+    c1.sum().backward();// c1 = 4 * a1  d(c1)/d(a1) = 4
+    std::cout << "Gradients of a (without detach):\n" << a1.grad() << std::endl;
+
     return 0;
 }
 

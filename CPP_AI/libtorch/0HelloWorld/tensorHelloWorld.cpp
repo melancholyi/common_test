@@ -1,8 +1,8 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-03-25 14:52:37
- * @FilePath: /test/CPP_THIRD_PARTYs/libtorch/0HelloWorld/tensorHelloWorld.cpp
+ * @LastEditTime: 2025-04-02 12:56:17
+ * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
  * Copyright (c) 2025 by chasey && melancholycy@gmail.com, All Rights Reserved. 
@@ -183,6 +183,75 @@ void torchDetachTest(){
   b2.sum().backward();// The autograd computation graph is end at b2, so the gradients of a2 is 2
   std::cout << "Gradients of a (with detach at b2_detached):\n" << a2.grad() << std::endl;
 }
+/////////////////////////////////////PART: [x, y, theta, t] custom distance /////////////////////////////////////////
+void testCustomDistXYThetaT(){
+  //NOTE: parameters  
+  // kernel len, distance angleLen timeLen 
+  std::vector<double> kernelLen{1.0, 0.5, 1.0};
+
+
+
+  // 初始化predX和trainX
+  torch::Tensor predX = torch::arange(1, 13).reshape({3, 4}).to(torch::kFloat32); // 形状为(3,4)
+  torch::Tensor trainX = torch::arange(1, 9).reshape({2, 4}).to(torch::kFloat32); // 形状为(2,4)
+  std::cout << "===== Origin Dataset =====" << std::endl;
+  std::cout << "=predX: \n" << predX << std::endl;
+  std::cout << "=trainX: \n" << trainX << std::endl;
+
+  // 计算欧几里得距离（前两维）
+  torch::Tensor predX_xy = predX.index({torch::indexing::Slice(), torch::indexing::Slice(0, 2)});
+  torch::Tensor trainX_xy = trainX.index({torch::indexing::Slice(), torch::indexing::Slice(0, 2)});
+  torch::Tensor euclidean_dist = torch::sqrt(torch::sum(torch::pow(predX_xy.unsqueeze(1) - trainX_xy.unsqueeze(0), 2), 2)).unsqueeze(2);
+  torch::Tensor edist_divlen = euclidean_dist / kernelLen[0];
+  std::cout << "===== the first two dimensions' euclidean distance =====" << std::endl;
+  std::cout << "predX_xy: \n" << predX_xy << std::endl;
+  std::cout << "trainX_xy: \n" << trainX_xy << std::endl;
+  std::cout << "euclidean_dist: \n" << euclidean_dist << std::endl;
+  std::cout << "edist_divlen: \n" << edist_divlen << std::endl;
+
+  // 计算角度差的绝对值（第三维）
+  torch::Tensor predX_angle = predX.index({torch::indexing::Slice(), 2});
+  torch::Tensor trainX_angle = trainX.index({torch::indexing::Slice(), 2});
+  torch::Tensor angle_diff = torch::abs(predX_angle.unsqueeze(1) - trainX_angle.unsqueeze(0)).unsqueeze(2);
+  torch::Tensor angle_diff_divlen = angle_diff / kernelLen[1];
+  std::cout << "===== the third dimension's angle difference =====" << std::endl;
+  std::cout << "predX_angle: \n" << predX_angle << std::endl;
+  std::cout << "trainX_angle: \n" << trainX_angle << std::endl;
+  std::cout << "angle_diff: \n" << angle_diff << std::endl;
+  std::cout << "angle_diff_divlen: \n" << angle_diff_divlen << std::endl;
+
+  // 计算指数距离（第四维）
+  torch::Tensor predX_theta = predX.index({torch::indexing::Slice(), 3});
+  torch::Tensor trainX_theta = trainX.index({torch::indexing::Slice(), 3});
+  torch::Tensor exp_dist = torch::exp(-torch::abs(predX_theta.unsqueeze(1) - trainX_theta.unsqueeze(0))).unsqueeze(2);
+  torch::Tensor exp_dist_divlen = exp_dist / kernelLen[2];
+  std::cout << "===== the fourth dimension's exp distance =====" << std::endl;
+  std::cout << "predX_theta: \n" << predX_theta << std::endl;
+  std::cout << "trainX_theta: \n" << trainX_theta << std::endl;
+  std::cout << "exp_dist: \n" << exp_dist << std::endl;
+  std::cout << "exp_dist_divlen: \n" << exp_dist_divlen << std::endl;
+
+  // 将三个距离合并成一个张量
+  torch::Tensor final_dist = torch::cat({euclidean_dist, angle_diff, exp_dist}, 2);
+  std::cout << "===== Final distance =====" << std::endl;
+  std::cout << "Final distance shape: " << final_dist.sizes() << std::endl;
+  std::cout << "Final distance: " << final_dist << std::endl;
+
+
+  // compute kernel for everyone elem  
+  const double M2PI = 2.0 * M_PI;
+  double kernelScaler_ = 1.0;
+  torch::Tensor kernel = ((2.0 + (final_dist * M2PI).cos()) * (1.0 - final_dist) / 3.0 +
+                  (final_dist * M2PI).sin() / M2PI) * kernelScaler_;
+  std::cout << "===== kernel(origin): \n" << kernel << std::endl;
+  // kernel's elem is masked with 0.0 if dist > kernelLen_
+  kernel = kernel * (kernel > 0.0).to(torch::kFloat64);
+  std::cout << "===== kernel(in len): \n" << kernel << std::endl;
+
+  // 计算加权和
+  torch::Tensor kernel_sum = kernel.sum(2);
+  std::cout << "===== kernel_sum: \n" << kernel_sum << std::endl;
+}
 
 
 int main() {
@@ -245,6 +314,10 @@ int main() {
   std::cout << "\n==========torch::detach==========\n";
   torchDetachTest();
 
+  
+  //! PART: 9 [x, y, theta, exp(-t)] 's custom distance 
+  std::cout << "\n==========[x, y, theta, exp(-t)]'s custom distance==========\n";
+  testCustomDistXYThetaT();
 
 
 
