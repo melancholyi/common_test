@@ -1,7 +1,7 @@
 '''
 Author: chasey melancholycy@gmail.com
 Date: 2025-01-28 15:22:29
-FilePath: /mesh_planner/test/python/calc.py
+FilePath: /test/PY_/calc.py
 Description: 
 
 Copyright (c) 2025 by chasey (melancholycy@gmail.com), All Rights Reserved. 
@@ -24,3 +24,6 @@ print(getC(0.18,0.15))
 print(getC(0.20,0.15))
 print(getC(0.21,0.16))
 print(getC(0.19,0.14))
+
+
+print(np.log(1e30))

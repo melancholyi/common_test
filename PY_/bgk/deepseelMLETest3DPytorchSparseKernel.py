@@ -111,6 +111,7 @@ def closure():
     optimizer.zero_grad()
     loss = negative_log_mll((lambda_, l), X_train, y_train, mu0, sigma)
     loss.backward()
+    # print(f'Loss: {loss.item():.4f}, λ: {lambda_.item():.4f}, l: {l.item():.4f}')
     return loss
 
 # 运行优化
