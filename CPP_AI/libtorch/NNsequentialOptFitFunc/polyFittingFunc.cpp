@@ -21,6 +21,7 @@ struct PolynomialModel : torch::nn::Module {
 };
 
 void testWithoutTorchNNModule(){
+    auto device = torch::kCUDA;
     // 生成训练数据
     auto x = torch::linspace(-M_PI, M_PI, 1000).to(torch::kFloat32);
     auto y_true = 2 * torch::sin(x) + 4 * torch::cos(x) + x.pow(2);

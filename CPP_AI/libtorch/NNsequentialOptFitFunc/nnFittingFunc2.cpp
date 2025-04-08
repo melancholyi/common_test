@@ -294,9 +294,27 @@ struct MLP : torch::nn::Module {
 };
 
 int main() {
+    // std::cout << "=====init thread config=====" << std::endl;
+    // // 打印当前的intra-op线程数
+    // std::cout << "Current intra-op threads: " << torch::get_num_threads() << std::endl;
+    // // 打印当前的inter-op线程数
+    // std::cout << "Current inter-op threads: " << torch::get_num_interop_threads() << std::endl;
+
+    // // 设置intra-op线程数
+    // torch::set_num_threads(4);
+    // // 设置inter-op线程数
+    // torch::set_num_interop_threads(2);
+
+    // std::cout << "=====after thread config=====" << std::endl;
+    // // 打印当前的intra-op线程数
+    // std::cout << "Current intra-op threads: " << torch::get_num_threads() << std::endl;
+    // // 打印当前的inter-op线程数
+    // std::cout << "Current inter-op threads: " << torch::get_num_interop_threads() << std::endl;
+
+
     bool isSoftmax = false;
     int dimInput = 1;
-    int dimHidden = 16;
+    int dimHidden = 8;
     int dimOutput = 1;
     std::string optim_type = "Adam"; // 使用Adam优化器
     double lr = 0.001;
@@ -338,7 +356,7 @@ int main() {
     auto func = [](float x) { return 2 * std::sin(x) + 4 * std::cos(x) + x*x; };
     std::vector<float> x_data;
     std::vector<float> y_data;
-    for (float x = -10; x <= 10; x += 0.1) {
+    for (float x = -10; x <= 10; x += 0.0001) {
         x_data.push_back(x);
         y_data.push_back(func(x));
     }
@@ -346,6 +364,7 @@ int main() {
     // 转换为Tensor并移动到GPU
     auto x_tensor = torch::tensor(x_data).unsqueeze(1).to(device);
     auto y_tensor = torch::tensor(y_data).unsqueeze(1).to(device);
+    std::cout << "=====x_tensor.type()=====" << x_tensor.dtype() << std::endl;
 
     auto time_start = std::chrono::high_resolution_clock::now();
 

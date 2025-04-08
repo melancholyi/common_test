@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-04-02 12:56:17
+ * @LastEditTime: 2025-04-07 06:39:08
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -44,6 +44,7 @@ void vec2tensorGPU(){
   std::vector<double> vec = {1, 2, 3, 4, 5, 6};
   torch::Tensor tensor = torch::from_blob(vec.data(), {3, 2}, torch::kFloat64).to(torch::kCUDA);
   std::cout << "====vec2tensor\n" << tensor << std::endl;
+
   
   
   // 将CUDA张量转移到CPU上 将CPU张量转换为Eigen::MatrixXd
@@ -154,6 +155,15 @@ void moreUsefulFuncsTest(){
   torch::Tensor a_normed = a/a_norm;
   std::cout << "===== a/a_norm: \n" << a_normed << std::endl;
   torch::Tensor a_norm_detach = a_normed.detach();
+
+  torch::Tensor origin = torch::ones({3,1}, torch::kFloat64);
+  std::cout << "===== origin: \n" << origin << std::endl;
+  std::cout << "===== origin: \n" << origin.transpose(0,1) << std::endl;
+  std::cout << "===== origin.flatten().diag(): \n" << origin.flatten().diag() << std::endl;
+
+
+
+
 }
 
 /////////////////////////////////////PART: torch::detach /////////////////////////////////////////
@@ -188,8 +198,6 @@ void testCustomDistXYThetaT(){
   //NOTE: parameters  
   // kernel len, distance angleLen timeLen 
   std::vector<double> kernelLen{1.0, 0.5, 1.0};
-
-
 
   // 初始化predX和trainX
   torch::Tensor predX = torch::arange(1, 13).reshape({3, 4}).to(torch::kFloat32); // 形状为(3,4)
@@ -252,6 +260,25 @@ void testCustomDistXYThetaT(){
   torch::Tensor kernel_sum = kernel.sum(2);
   std::cout << "===== kernel_sum: \n" << kernel_sum << std::endl;
 }
+/////////////////////////////////////PART: testAutoGradGPUTensor /////////////////////////////////////////
+void testAutoGradGPUTensor(){
+  // 创建一个需要求导的tensor
+  torch::Tensor x = torch::randn({2, 3}, torch::kCUDA).requires_grad_();
+  torch::Tensor weight = torch::randn({4, 3}, torch::kCUDA).requires_grad_();
+  
+  // 定义一个简单的线性函数
+  auto y = x.mm(weight.t());
+  
+  // 计算梯度
+  y.sum().backward();
+  
+  // 输出梯度
+  std::cout << "Gradient of x:" << std::endl;
+  std::cout << x.grad() << std::endl;
+  
+  std::cout << "Gradient of weight:" << std::endl;
+  std::cout << weight.grad() << std::endl;
+}
 
 
 int main() {
@@ -307,7 +334,7 @@ int main() {
   create10X10Cov3d();
 
   //! PART: 7 more useful functions  
-  std::cout << "\n==========more useful functions==========\n";
+  std::cout << "\n==========PART: 7 more useful functions==========\n";
   moreUsefulFuncsTest();
 
   //! PART: 8 torch::detach
@@ -319,6 +346,8 @@ int main() {
   std::cout << "\n==========[x, y, theta, exp(-t)]'s custom distance==========\n";
   testCustomDistXYThetaT();
 
+  //! PART: 10 auto grad tensor gpu version
+  testAutoGradGPUTensor();
 
 
 
