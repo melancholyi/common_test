@@ -1,7 +1,7 @@
 /*
  * @Author: chasey melancholycy@gmail.com
  * @Date: 2025-01-31 08:04:16
- * @FilePath: /mesh_planner/test/cpp/temp.cpp
+ * @FilePath: /test/CPP/temp.cpp
  * @Description: 
  * 
  * Copyright (c) 2025 by chasey (melancholycy@gmail.com), All Rights Reserved. 
@@ -65,40 +65,61 @@ private:
     MatrixXd trainX_; // Training data
 };
 
+enum class eElevState{
+    OBSERVED_E = 0, POTENTIAL_TERRAIN_E = 1, POTENTIAL_OBSTACLE_E = 2, OVERHANG_E = 3, UNOBSERVED_E = 4
+};
+
 int main() {
-    // Example training data (5 samples, 3 features)
-    MatrixXd trainX(5, 3);
-    trainX << 1, 2, 3,
-              4, 5, 6,
-              7, 8, 9,
-              10, 11, 12,
-              13, 14, 15;
+    // // Example training data (5 samples, 3 features)
+    // MatrixXd trainX(5, 3);
+    // trainX << 1, 2, 3,
+    //           4, 5, 6,
+    //           7, 8, 9,
+    //           10, 11, 12,
+    //           13, 14, 15;
 
-    // Example prediction data (3 samples, 3 features)
-    MatrixXd predX(4, 3);
-    predX << 1.5, 2.5, 3.5,
-             4.5, 5.5, 6.5,
-             7.5, 8.5, 9.5,
-             10.5, 11.5, 12.5;
+    // // Example prediction data (3 samples, 3 features)
+    // MatrixXd predX(4, 3);
+    // predX << 1.5, 2.5, 3.5,
+    //          4.5, 5.5, 6.5,
+    //          7.5, 8.5, 9.5,
+    //          10.5, 11.5, 12.5;
 
-    // Example distance matrix (3 rows, 5 columns)
-    MatrixXd distMat = MatrixXd::Ones(4, 5);
-    // distMat << 0.1, 0.2, 0.3, 0.4, 0.5,
-    //            0.6, 0.7, 0.8, 0.9, 1.0,
-    //            1.1, 1.2, 1.3, 1.4, 1.5,
-    //            1.6,1.7,1.8,1.9,2.0;
+    // // Example distance matrix (3 rows, 5 columns)
+    // MatrixXd distMat = MatrixXd::Ones(4, 5);
+    // // distMat << 0.1, 0.2, 0.3, 0.4, 0.5,
+    // //            0.6, 0.7, 0.8, 0.9, 1.0,
+    // //            1.1, 1.2, 1.3, 1.4, 1.5,
+    // //            1.6,1.7,1.8,1.9,2.0;
 
-    // Initialize the class with training data
-    ExampleClass example(trainX);
+    // // Initialize the class with training data
+    // ExampleClass example(trainX);
 
-    // Output matrix for partial derivatives
-    MatrixXd pdMat;
+    // // Output matrix for partial derivatives
+    // MatrixXd pdMat;
 
-    // Compute the partial derivative matrix
-    example.pdDistMatpdInput(predX, distMat, pdMat);
+    // // Compute the partial derivative matrix
+    // example.pdDistMatpdInput(predX, distMat, pdMat);
 
     // Print the result
     // std::cout << "pdMat:\n" << pdMat << std::endl;
+    std::cout << std::flush << std::endl;
+    eElevState state;
+    state = eElevState::OBSERVED_E;
+    uint8_t state_value = static_cast<uint8_t>(state);
+    std::cout << "state: " << state_value << std::endl;
+    state = eElevState::POTENTIAL_TERRAIN_E;
+    state_value = static_cast<uint8_t>(state);
+    std::cout << "state: " << state_value << std::endl;
+    state = eElevState::POTENTIAL_OBSTACLE_E;
+    state_value = static_cast<uint8_t>(state);
+    std::cout << "state: " << state_value << std::endl;
+    state = eElevState::OVERHANG_E;
+    state_value = static_cast<uint8_t>(state);
+    std::cout << "state: " << state_value << std::endl;
+    state = eElevState::UNOBSERVED_E;
+    state_value = static_cast<uint8_t>(state);
+    std::cout << "state: " << state_value << std::endl;
 
     return 0;
 }

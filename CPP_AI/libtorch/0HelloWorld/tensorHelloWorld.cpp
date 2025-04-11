@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-04-07 06:39:08
+ * @LastEditTime: 2025-04-10 01:47:57
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -162,6 +162,11 @@ void moreUsefulFuncsTest(){
   std::cout << "===== origin.flatten().diag(): \n" << origin.flatten().diag() << std::endl;
 
 
+  ////////////////////////////////////////////////////////////
+  
+  
+
+
 
 
 }
@@ -281,6 +286,29 @@ void testAutoGradGPUTensor(){
 }
 
 
+///////////////////////////////////PART: MIN-DELTA-MAX generate matrix
+// 函数定义
+torch::Tensor generate_arithmetic_sequences(
+  const std::vector<float>& min_list,
+  const std::vector<float>& max_list,
+  int count
+) {
+  // 检查min_list和max_list的大小是否一致
+  assert(min_list.size() == max_list.size());
+
+  // 将min_list和max_list转换为torch::Tensor
+  torch::Tensor min_tensor = torch::tensor(min_list, torch::kFloat32);
+  torch::Tensor max_tensor = torch::tensor(max_list, torch::kFloat32);
+
+  // 生成一个从0到count-1的序列
+  torch::Tensor indices = torch::arange(0, count, torch::kFloat32);
+
+  // 使用广播机制生成等差数列
+  torch::Tensor result = min_tensor.unsqueeze(1) + (max_tensor - min_tensor).unsqueeze(1) * indices / (count - 1);
+
+  return result;
+}
+
 int main() {
   //! PART: 0 test
   std::cout << "Libtorch version: " << TORCH_VERSION << std::endl;
@@ -348,6 +376,12 @@ int main() {
 
   //! PART: 10 auto grad tensor gpu version
   testAutoGradGPUTensor();
+
+  //! PART: 11 create kernelLen tensor
+  auto klen_tensor = generate_arithmetic_sequences({0.1, 0.2, 0.3}, {1, 1, 1}, 10);
+  std::cout << "klen_tensor.sizes()" << klen_tensor.sizes() << std::endl;
+  std::cout << "klen_tensor: \n" << klen_tensor << std::endl;
+
 
 
 
