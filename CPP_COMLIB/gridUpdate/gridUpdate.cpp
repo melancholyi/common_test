@@ -190,6 +190,14 @@ int main() {
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
     std::cout << "Total program took " << duration << " us" << std::endl;
 
-
+    // int *p = new int;
+    // *p = 10;
+    // std::cout << "p = " << *p << std::endl;
+    // delete p;
+    // delete p; // 双重释放错误
+    /*
+    free(): double free detected in tcache 2
+    Aborted (core dumped)
+    */
     return 0;
 }

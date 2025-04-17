@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-04-12 02:53:03
- * @LastEditTime: 2025-04-12 07:59:30
+ * @LastEditTime: 2025-04-15 13:41:30
  * @FilePath: /test/CPP_COMLIB/openMP/helloworld/singleLoop.cpp
  * @Description: 
  * @Reference: 
@@ -69,8 +69,8 @@ int main() {
 
     ///////////////////////////////// vec3 test //////////////////////////////////
     std::cout << "\n==== vec3 prealloc memory with vec[i] = i ====" << std::endl;
-    std::vector<int> vec3;
-    vec3.reserve(COUNT);
+    std::vector<float> vec3;
+    vec3.resize(COUNT);
     //NOTE: prealloc memory 
     #pragma omp parallel for //NOTE: for parallel, dynamic alloc memory     
     for (int i = 0; i < COUNT; i++) {
@@ -78,6 +78,7 @@ int main() {
     }
 
     // print vec3
+    std::cout << "vec3.size(): " << vec3.size() << std::endl;
     for(int i = 0; i < COUNT ; i ++){
         std::cout << "data: " << vec3[i] << std::endl;
     }

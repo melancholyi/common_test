@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-04-10 01:47:57
+ * @LastEditTime: 2025-04-16 14:51:37
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -131,9 +131,10 @@ void create10X10Cov3d(){
 }
 
 
-/////////////////////////////////////PART: more useful function test /////////////////////////////////////////
+/////////////////////////////////////PART: 7 more useful function test /////////////////////////////////////////
 void moreUsefulFuncsTest(){
   ////////////////////////////////////// torch::outer /////////////////////////////////////////
+  std::cout << "===== PART 7.1: torch::outer \n" << std::endl;
   // Create two 1D tensors
   at::Tensor a = torch::tensor({1, 2, 3}, torch::kFloat64);
   at::Tensor b = torch::tensor({4, 5, 6}, torch::kFloat64);
@@ -145,7 +146,7 @@ void moreUsefulFuncsTest(){
   std::cout << "Outer product:" << std::endl << outer_product << std::endl;
 
   ////////////////////////////////////// torch::norm /////////////////////////////////////////
-
+  std::cout << "===== PART 7.2: torch::norm \n" << std::endl;
   auto a_norm = a.norm(2, 0, true); // p = 2(norm formulation) dim = 0(operate on columns) keepdim = true(keep the dimension)
   /*
   a_norm:  3.7417,  sqrt(1^2 + 2^2 + 3^2) = 3.7417
@@ -162,12 +163,21 @@ void moreUsefulFuncsTest(){
   std::cout << "===== origin.flatten().diag(): \n" << origin.flatten().diag() << std::endl;
 
 
-  ////////////////////////////////////////////////////////////
+  //////////////////////////////////// mask select /////////////////////////////////////////
+  std::cout << "===== PART 7.3: tensor.masked_select() \n" << std::endl;
+  torch::Tensor tensor_origin = torch::arange(1, 17).reshape({4, 4}).to(torch::kFloat32);
+  std::cout << "tensor_origin: \n" << tensor_origin << std::endl;
+  torch::Tensor mask = tensor_origin > 8;
+  std::cout << "mask: \n" << mask << std::endl;
+  torch::Tensor selected = tensor_origin.masked_select(mask);//type: [ CPUFloatType{8} ]
+  std::cout << "selected: \n" << selected << std::endl;
+  torch::Tensor tensor_mult_mask = tensor_origin * mask;
+  std::cout << "tensor_mult_mask: \n" << tensor_mult_mask << std::endl;
+
+  //////////////////////////////////////// tensor.unfold ////////////////////////////////////////////
+
+  //////////////////////////////////////// tensor.einsum //////////////////////////////////////////
   
-  
-
-
-
 
 }
 

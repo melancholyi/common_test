@@ -8,7 +8,7 @@ pred_n = 200
 data_range_min = -5
 data_range_max = 5
 h = 0.2  # Bandwidth
-noise_std = 0.1
+noise_std = 0.01
 
 def generateData(x):
     return 2 * np.sin(x) + 4 * np.cos(x) + x**2
@@ -84,7 +84,7 @@ plt.quiver(xStar, y_pred, np.ones_like(xStar), grad_pred,
 plt.xlabel('x')
 plt.ylabel('y')
 plt.title('Linear Interpolation Prediction')
-plt.legend()
+plt.legend(fontsize=24)
 plt.grid(True)
 
 # Plot gradient comparison
@@ -105,7 +105,7 @@ plt.plot(xStar, grad_pred, 'b-', label='Predicted Gradient')
 plt.xlabel('x')
 plt.ylabel('Gradient')
 plt.title('Gradient Comparison')
-plt.legend()
+plt.legend(fontsize=24)
 plt.grid(True)
 
 plt.tight_layout()

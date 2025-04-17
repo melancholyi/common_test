@@ -10,7 +10,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -O3")
 add_executable(singleLoop singleLoop.cpp)
 add_executable(doubleLoop doubleLoop.cpp)
 add_executable(doubleLoopOther doubleLoopOther.cpp)
-
+add_executable(unordered_map_test unordered_map_test.cpp)
 # 查找OpenMP库
 find_package(OpenMP REQUIRED)
 
@@ -18,5 +18,6 @@ find_package(OpenMP REQUIRED)
 target_link_libraries(singleLoop PRIVATE OpenMP::OpenMP_CXX)
 target_link_libraries(doubleLoop PRIVATE OpenMP::OpenMP_CXX)
 target_link_libraries(doubleLoopOther PRIVATE OpenMP::OpenMP_CXX)
+target_link_libraries(unordered_map_test PRIVATE OpenMP::OpenMP_CXX)
 
 

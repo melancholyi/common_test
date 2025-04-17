@@ -84,7 +84,7 @@ pred_n = 200
 data_range_min = -5
 data_range_max = 5
 h = 0.2  # Bandwidth
-noise_std = 0.2
+noise_std = 0.01
 
 def generateData(x):
     return 2 * np.sin(x) + 4 * np.cos(x) + x**2

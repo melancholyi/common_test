@@ -31,13 +31,13 @@ def isPtInEllipsoid(pt, center, aSquaInv, bSquaInv, theta):
 # 定义栅格参数
 grid_min_x, grid_min_y = 0, 0
 grid_max_x, grid_max_y = 2, 2
-resolution = 0.25
+resolution = 0.2
 
 # 定义椭圆参数
-ellipse_center_x, ellipse_center_y = 1, 1
-semi_major_axis = 0.5  # 半长轴
-semi_minor_axis = 0.3  # 半短轴
-rotation_angle = -30  # 旋转角度（单位：度）
+ellipse_center_x, ellipse_center_y = 1.1, 1.1
+semi_major_axis = resolution * 3 + resolution/2  # 半长轴 
+semi_minor_axis = resolution * 2 + resolution/2  # 半短轴
+rotation_angle = 180  # 旋转角度（单位：度）
 
 # 计算 a^2 和 b^2 的倒数
 aSquaInv = 1 / (semi_major_axis ** 2)
