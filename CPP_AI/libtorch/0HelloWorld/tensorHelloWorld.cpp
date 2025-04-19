@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-04-16 14:51:37
+ * @LastEditTime: 2025-04-19 02:57:55
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -319,9 +319,158 @@ torch::Tensor generate_arithmetic_sequences(
   return result;
 }
 
+/////////////////////////////////////////PART:13 meanVec2TensorAndChangeDim /////////////////////////////////////////
+void meanVec2TensorAndChangeDim(){
+  // 创建一个包含 49 个 Eigen::Vector3d 的 std::vector
+  std::vector<Eigen::Vector3d> vec;
+  for (int i = 0; i < 49; ++i) {
+      vec.emplace_back(Eigen::Vector3d(i * 3, i * 3 + 1, i * 3 + 2));
+      std::cout << "vec[" << i << "] = " << vec[i].transpose() << std::endl;
+  }
+
+  // 将 std::vector<Eigen::Vector3d> 转换为形状为 [3, 7, 7] 的 Tensor
+  torch::Tensor tensor = torch::from_blob(vec.data(), {49, 3}, torch::kFloat64).view({3, 7, 7});
+  std::cout << "Original tensor shape: " << tensor.sizes() << std::endl;
+  std::cout << "Original tensor: " << tensor << std::endl;
+
+  // 使用 permute 方法改变维度顺序为 [7, 7, 3]
+  torch::Tensor permuted_tensor = tensor.permute({2, 1, 0});
+  std::cout << "Permuted tensor shape: " << permuted_tensor.sizes() << std::endl;
+
+  for(int i = 0 ; i < 7; i++){
+    for(int j = 0; j < 7; j++){
+        std::cout << "permuted_tensor[" << i << "][" << j << "] = " << (permuted_tensor[i][j]).unsqueeze(0) << std::endl;
+    }
+  }
+}
+
+///////////////////////////////////PART:14 unsqueeze and view /////////////////////////////////////////
+void unsqueezeTest(){
+  // Create a tensor of shape [7x7]
+  torch::Tensor tensor_7x7 = torch::arange(1, 50).reshape({7, 7}).to(torch::kFloat32);
+  std::cout << "Original tensor_7x7:\n" << tensor_7x7 << std::endl;
+
+  // Add a dimension at position 2, shape becomes [7x7x3]
+  torch::Tensor tensor_7x7x3 = tensor_7x7.unsqueeze(2).expand({7, 7, 3});
+  std::cout << "Broadcasted tensor_7x7x3:\n" << tensor_7x7x3 << std::endl;
+
+  // Add a dimension at position 2, shape becomes [4x7x7x3]
+  torch::Tensor tensor_4x7x7x3 = tensor_7x7x3.unsqueeze(0).expand({4, 7, 7, 3});
+  std::cout << "Broadcasted tensor_4x7x7x3[0]:\n" << tensor_4x7x7x3[0] << std::endl; //NOTE: = tensor_7x7x3
+  std::cout << "Broadcasted tensor_4x7x7x3[1]:\n" << tensor_4x7x7x3[1] << std::endl; //NOTE: = tensor_7x7x3
+  std::cout << "Broadcasted tensor_4x7x7x3[2]:\n" << tensor_4x7x7x3[2] << std::endl; //NOTE: = tensor_7x7x3
+  std::cout << "Broadcasted tensor_4x7x7x3[3]:\n" << tensor_4x7x7x3[3] << std::endl; //NOTE: = tensor_7x7x3
+
+  // Add a dimension at position 2, shape becomes [2x4x7x7x3]
+  torch::Tensor tensor_2x4x7x7x3 = tensor_4x7x7x3.unsqueeze(0).expand({2, 4, 7, 7, 3}); //
+  // std::cout << "Broadcasted tensor_2x4x7x7x3[0]:\n" << tensor_2x4x7x7x3[0] << std::endl; //NOTE: = tensor_4x7x7x3
+  // std::cout << "Broadcasted tensor_2x4x7x7x3[1]:\n" << tensor_2x4x7x7x3[1] << std::endl; //NOTE: = tensor_4x7x7x3
+
+
+  
+}
+
+//////////////////////////////////PART:15 stack tensor /////////////////////////////////////////
+void stackTensors(){
+  // Create a vector of tensors
+  std::vector<torch::Tensor> tensors;
+  for (int i = 0; i < 5; ++i) {
+    // torch::Tensor tensor = torch::ones({7, 7})*i;
+    torch::Tensor tensor = torch::rand({7, 7});
+    tensors.push_back(tensor);
+  }
+
+  //NOTE: First stack data, Second unsqueeze&expand
+  // Stack the tensors along a new dimension
+  torch::Tensor stacked_tensor = torch::stack(tensors, /*dim=*/0);// [5, 7, 7]
+  std::cout << "Stacked tensor shape: " << stacked_tensor.sizes() << std::endl;
+
+  // torch::Tensor tensor_5x42x7x7 = stacked_tensor.unsqueeze(1).expand({5, 42, 7, 7});
+  // std::cout << "tensor_5x42x7x7 shape: " << tensor_5x42x7x7.sizes() << std::endl;
+
+  // torch::Tensor tensor_5x43x42x7x7 = tensor_5x42x7x7.unsqueeze(1).expand({5, 43, 42, 7, 7});
+  // std::cout << "tensor_5x43x42x7x7 shape: " << tensor_5x43x42x7x7.sizes() << std::endl;
+  torch::Tensor tensor_5x43x42x7x7 = stacked_tensor.unsqueeze(1).unsqueeze(1).expand({-1, 43, 42, -1, -1});
+  std::cout << "tensor_5x43x42x7x7 shape: " << tensor_5x43x42x7x7.sizes() << std::endl;
+
+  torch::Tensor tensor_5x43x42x7x7x3 = tensor_5x43x42x7x7.unsqueeze(-1).expand({-1, -1, -1, -1, -1, 3}); 
+  std::cout << "tensor_5x43x42x7x7x3 shape: " << tensor_5x43x42x7x7x3.sizes() << std::endl;
+
+  //NOTE: First unsqueeze&expand, Second stack data
+  std::vector<torch::Tensor> tensors_unsqueezed;
+  bool is_first = true;
+  for(auto origin : tensors){
+    torch::Tensor tensor_42x7x7 = origin.unsqueeze(0).expand({42, 7, 7});
+    if(is_first){
+      std::cout << "tensor_42x7x7 shape: " << tensor_42x7x7.sizes() << std::endl;
+    }
+    torch::Tensor tensor_43x42x7x7 = tensor_42x7x7.unsqueeze(0).expand({43, 42, 7, 7});
+    if(is_first){
+      std::cout << "tensor_43x42x7x7 shape: " << tensor_43x42x7x7.sizes() << std::endl;
+    }
+    torch::Tensor tensor_43x42x7x7x3 = tensor_43x42x7x7.unsqueeze(-1).expand({43, 42, 7, 7, 3});
+    if(is_first){
+      std::cout << "tensor_43x42x7x7x3 shape: " << tensor_43x42x7x7x3.sizes() << std::endl;
+    }
+    tensors_unsqueezed.push_back(tensor_43x42x7x7x3);
+    is_first = false;
+  }
+  auto second_tensor_5x43x42x7x7x3 = torch::stack(tensors_unsqueezed, /*dim=*/0);// [5, 43, 42, 7, 7, 3]
+  std::cout << "second_tensor_5x43x42x7x7x3 shape: " << second_tensor_5x43x42x7x7x3.sizes() << std::endl;
+
+  auto diff = tensor_5x43x42x7x7x3 - second_tensor_5x43x42x7x7x3;
+  auto diff_sum = diff.sum();
+
+  std::cout << "two ways tensor diff_sum: " << diff_sum << std::endl;
+}
+
+//////////////////////////////////PART:16 batch eigen-Decomposition /////////////////////////////////////////
+void batchMatrixEigenDecomposition(){
+  // Create a tensor of shape [5, 43, 42, 3, 3] representing covariance matrices
+  torch::Tensor covs = torch::randn({5, 43, 42, 3, 3});
+  covs = torch::matmul(covs.transpose(-1, -2), covs); // Ensure the matrices are symmetric
+
+  // Flatten the first three dimensions to create a batch of matrices
+  torch::Tensor covs_flat = covs.view({5 * 43 * 42, 3, 3});
+
+  // Perform batch eigenvalue decomposition
+  auto [eigenvalues_flat, eigenvectors_flat] = torch::linalg::eig(covs_flat);
+
+  // Reshape the results back to the original shape
+  torch::Tensor eigenvalues = torch::real(eigenvalues_flat).view({5, 43, 42, 3});
+  torch::Tensor eigenvectors = torch::real(eigenvectors_flat).view({5, 43, 42, 3, 3});
+
+  // For comparison, perform the decomposition using nested loops
+  torch::Tensor eigenvalues_loop = torch::empty({5, 43, 42, 3});
+  torch::Tensor eigenvectors_loop = torch::empty({5, 43, 42, 3, 3});
+  for (int i = 0; i < 5; ++i) {
+      for (int j = 0; j < 43; ++j) {
+          for (int k = 0; k < 42; ++k) {
+              auto [eigvals, eigvecs] = torch::linalg::eig(covs[i][j][k]);
+              eigenvalues_loop[i][j][k] = torch::real(eigvals);
+              eigenvectors_loop[i][j][k] = torch::real(eigvecs);
+          }
+      }
+  }
+
+  // Compare the results from the two methods
+  auto eigenvalues_diff = (eigenvalues - eigenvalues_loop).abs().max().item<float>();
+  auto eigenvectors_diff = (eigenvectors - eigenvectors_loop).abs().max().item<float>();
+  std::cout << "Maximum difference in eigenvalues: " << eigenvalues_diff << std::endl;
+  std::cout << "Maximum difference in eigenvectors: " << eigenvectors_diff << std::endl;
+  
+
+  // Print the data at the specified location
+  std::cout << "eigenvalues[2][6][15]:" << eigenvalues[2][6][15].unsqueeze(0) << std::endl;
+  std::cout << "eigenvectors[2][6][15]:\n" << eigenvectors[2][6][15] << std::endl;
+  std::cout << "eigenvalues_loop[2][6][15]:" << eigenvalues_loop[2][6][15].unsqueeze(0) << std::endl;
+  std::cout << "eigenvectors_loop[2][6][15]:\n" << eigenvectors_loop[2][6][15] << std::endl;
+}
+
+
 int main() {
   //! PART: 0 test
-  std::cout << "Libtorch version: " << TORCH_VERSION << std::endl;
+  std::cout << "Libtorch version:  " << TORCH_VERSION << std::endl;
 
   torch::Device device(torch::kCPU);
   if (torch::cuda::is_available()) {
@@ -392,6 +541,32 @@ int main() {
   std::cout << "klen_tensor.sizes()" << klen_tensor.sizes() << std::endl;
   std::cout << "klen_tensor: \n" << klen_tensor << std::endl;
 
+  //! PART: 12 test unorder_map<int, torch::Tensor>
+  std::unordered_map<int, torch::Tensor> tensor_map;
+  for (int i = 0; i < 3; ++i) {
+    tensor_map[i] = torch::rand({3, 3}).to(device);
+  }
+  std::cout << "tensor_map[0].sizes()" << tensor_map[0].sizes() << std::endl;
+  std::cout << "tensor_map[0]: \n" << tensor_map[0] << std::endl;
+  std::cout << "tensor_map[1].sizes()" << tensor_map[1].sizes() << std::endl;
+  std::cout << "tensor_map[1]: \n" << tensor_map[1] << std::endl;
+
+  //! PART: 13 change dim  
+  std::cout << "\n==========PART13: change dim==========\n";
+  meanVec2TensorAndChangeDim();
+
+
+  //! PART: 14 unsqueeze and view
+  std::cout << "\n==========PART14: unsqueeze and view==========\n";
+  unsqueezeTest();
+
+  //! PART: 15 stack tensor
+  std::cout << "\n==========PART15: stack tensor==========\n";
+  stackTensors();
+
+  //! PART: 16 batch eigen-Decomposition
+  std::cout << "\n==========PART16: batch eigen-Decomposition==========\n";
+  batchMatrixEigenDecomposition();
 
 
 
