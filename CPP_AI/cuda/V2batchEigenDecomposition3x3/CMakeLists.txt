@@ -13,6 +13,7 @@ cuda_add_executable(eigen_decomp
     eigen_decomp.cu
 )
 
+# target_link_libraries(eigen_decomp PRIVATE Eigen3::Eigen)
 # target_link_libraries(eigen_decomp PRIVATE CUDA::cudart)  # Adjust based on your CUDA libraries
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
