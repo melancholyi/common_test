@@ -157,20 +157,20 @@ std::tuple<double, double, double> testOnce(){
     // 启动核函数
     eigenDecompositionKernel<<<gridSize, blockSize>>>(d_matrices, d_eigenvalues, d_eigenvectors, NUM_MATRICES);
 
-    // 记录结束时间
-    cudaEventRecord(stop);
 
-    // 等待核函数完成
-    cudaEventSynchronize(stop);
 
     // 拷贝回结果
     cudaMemcpy(h_eigenvalues, d_eigenvalues, NUM_MATRICES * 3 * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_eigenvectors, d_eigenvectors, NUM_MATRICES * 9 * sizeof(float), cudaMemcpyDeviceToHost);
     
+
+    // 记录结束时间
+    cudaEventRecord(stop);
+    // 等待核函数完成
+    cudaEventSynchronize(stop);
     // 计算时间差
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
-
     auto time_end_cpu = std::chrono::high_resolution_clock::now();
     auto duration_cpu = std::chrono::duration_cast<std::chrono::milliseconds>(time_end_cpu - time_start_cpu);
     

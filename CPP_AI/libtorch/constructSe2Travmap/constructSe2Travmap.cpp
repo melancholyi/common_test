@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-04-16 07:40:36
- * @LastEditTime: 2025-04-17 13:41:28
+ * @LastEditTime: 2025-04-18 03:50:53
  * @FilePath: /test/CPP_AI/libtorch/constructSe2Travmap/constructSe2Travmap.cpp
  * @Description: 
  * @Reference: 
@@ -174,12 +174,13 @@ int main() {
         double robot_L = 1.0, robot_W = 0.7;
         int yaw_divide_num = 12; // 30 degree
 
+
         //! NOTE: get the ellipsoid mask tensor shape
         double ellipsoid_a = std::sqrt((robot_L * robot_L + robot_W * robot_W) / 4.0); // semi-major axis 0.610328
         double ellipsoid_b = robot_W/2; // semi-minor axis
         int grid_count = std::round(ellipsoid_a / resolution); // 3
         int exact_grid_len = grid_count * 2 + 1; 
-
+        torch::Tensor angles = torch::linspace(0, 360 - 360/yaw_divide_num, yaw_divide_num);
 
         std::cout << "ellipsoid_a:" << ellipsoid_a << std::endl; //ellipsoid_a:0.610328
         std::cout << "ellipsoid_b:" << ellipsoid_b << std::endl; //ellipsoid_b:0.35
@@ -251,7 +252,7 @@ int main() {
         //! ellipsoid mask 
         //theta test 0 30 60 90 120 150 180 210 240 270 300 330 (12 num data)
         
-        torch::Tensor angles = torch::linspace(0, 360 - 360/yaw_divide_num, yaw_divide_num);
+        // torch::Tensor angles = torch::linspace(0, 360 - 360/yaw_divide_num, yaw_divide_num);
         std::cout << "angles:" << angles << std::endl;
         std::cout << "torch::Tensor x = torch::arange(-grid_count, grid_count + 1).to(torch::kDouble):\n" << torch::arange(-grid_count, grid_count + 1).to(torch::kDouble) << std::endl;
         std::vector<torch::Tensor> angles_masks;
@@ -300,6 +301,25 @@ int main() {
             angles_masks.push_back(mask);
             std::cout << "angles_masks[" << i << "].sizes()" << angles_masks[i].sizes() << std::endl;
         }
+    }
+
+
+    {
+        std::vector<int> eigen_vectors(25);
+        for (int i = 0; i < 25; ++i) {
+            eigen_vectors[i] = i;
+        }
+        torch::Tensor tensor = torch::from_blob(eigen_vectors.data(),  {25, 1}, torch::kInt32);  //BUG: 
+        auto tensor_551 = tensor.view({5, 5, 1});
+        std::cout << "tensor.view({5, 5, 1}): \n" << tensor << std::endl;    
+        
+        auto tensor_55 = tensor.view({5, 5});
+        std::cout << "tensor.view({5, 5}): \n" << tensor << std::endl;
+
+        std::cout << "tensor_551[0][0]: " << tensor_551[0][0] << std::endl;
+        std::cout << "tensor_551[0][0][0]: " << tensor_551[0][0][0] << std::endl;
+        std::cout << "tensor_55[0][0]: " << tensor_55[0][0] << std::endl;
+
     }
     
 

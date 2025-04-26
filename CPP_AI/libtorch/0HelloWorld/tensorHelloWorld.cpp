@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-04-19 02:57:55
+ * @LastEditTime: 2025-04-26 06:33:52
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -12,6 +12,10 @@
 #include <torch/torch.h>
 #include <Eigen/Core>
 #include <cmath>
+#include <cuda_runtime.h>
+
+#include <vector>
+#include <random>
 
 void compareCPUAndGPUTest(){
   // 设置矩阵大小
@@ -41,6 +45,7 @@ void compareCPUAndGPUTest(){
 }
 
 void vec2tensorGPU(){
+  std::cout << "cuda is available: " << torch::cuda::is_available() << std::endl;
   std::vector<double> vec = {1, 2, 3, 4, 5, 6};
   torch::Tensor tensor = torch::from_blob(vec.data(), {3, 2}, torch::kFloat64).to(torch::kCUDA);
   std::cout << "====vec2tensor\n" << tensor << std::endl;
@@ -426,45 +431,248 @@ void stackTensors(){
 
 //////////////////////////////////PART:16 batch eigen-Decomposition /////////////////////////////////////////
 void batchMatrixEigenDecomposition(){
-  // Create a tensor of shape [5, 43, 42, 3, 3] representing covariance matrices
-  torch::Tensor covs = torch::randn({5, 43, 42, 3, 3});
+  
+  // data_size 31, 37, 36, 3, 3
+  auto device_ = torch::kCUDA;   // eig: 84 ~ 100ms   eigh: 38 ~ 42ms
+  // auto device_ = torch::kCPU; // eig: 74 ~  80ms   eigh: 39 ~ 45ms
+  // Create a tensor of shape [31, 37, 36, 3, 3] representing covariance matrices
+  torch::Tensor covs = torch::randn({31,100, 100, 3, 3}).to(device_);
   covs = torch::matmul(covs.transpose(-1, -2), covs); // Ensure the matrices are symmetric
 
   // Flatten the first three dimensions to create a batch of matrices
-  torch::Tensor covs_flat = covs.view({5 * 43 * 42, 3, 3});
+  torch::Tensor covs_flat = covs.view({covs.size(0) * covs.size(1) * covs.size(2) , covs.size(3), covs.size(4)});
 
-  // Perform batch eigenvalue decomposition
-  auto [eigenvalues_flat, eigenvectors_flat] = torch::linalg::eig(covs_flat);
+  // Create CUDA events for timing
+  //----------------------------------------
+  //----------------------------------------
+  cudaEvent_t start, end;
+  
+  cudaEventCreate(&start);
+  cudaEventCreate(&end);
+  cudaEventRecord(start);
+  std::chrono::high_resolution_clock::time_point time_start_cpu;
+  time_start_cpu = std::chrono::high_resolution_clock::now();
 
-  // Reshape the results back to the original shape
-  torch::Tensor eigenvalues = torch::real(eigenvalues_flat).view({5, 43, 42, 3});
-  torch::Tensor eigenvectors = torch::real(eigenvectors_flat).view({5, 43, 42, 3, 3});
 
-  // For comparison, perform the decomposition using nested loops
-  torch::Tensor eigenvalues_loop = torch::empty({5, 43, 42, 3});
-  torch::Tensor eigenvectors_loop = torch::empty({5, 43, 42, 3, 3});
-  for (int i = 0; i < 5; ++i) {
-      for (int j = 0; j < 43; ++j) {
-          for (int k = 0; k < 42; ++k) {
-              auto [eigvals, eigvecs] = torch::linalg::eig(covs[i][j][k]);
-              eigenvalues_loop[i][j][k] = torch::real(eigvals);
-              eigenvectors_loop[i][j][k] = torch::real(eigvecs);
-          }
-      }
-  }
+  // Perform eigenvalue decomposition on GPU
+  std::cout << "covs_flat.device: " << covs_flat.device() << "  covs_flat.sizes(): " << covs_flat.sizes() << std::endl;
+  // auto [eigenvalues_flat, eigenvectors_flat] = torch::linalg::eig(covs_flat/*", L"*/);
+  auto [eigenvalues_flat, eigenvectors_flat] = torch::linalg::eigh(covs_flat, "L");
+  std::cout << "!eigenvalues_flat.sizes: " << eigenvalues_flat.sizes() << std::endl;
+  // std::cout << "eigenvalues_flat[0]:" << eigenvalues_flat[0] << std::endl;
 
-  // Compare the results from the two methods
-  auto eigenvalues_diff = (eigenvalues - eigenvalues_loop).abs().max().item<float>();
-  auto eigenvectors_diff = (eigenvectors - eigenvectors_loop).abs().max().item<float>();
-  std::cout << "Maximum difference in eigenvalues: " << eigenvalues_diff << std::endl;
-  std::cout << "Maximum difference in eigenvectors: " << eigenvectors_diff << std::endl;
+  std::cout << "eigenvectors_flat.sizes: " << eigenvectors_flat.sizes() << std::endl;
+  // std::cout << "eigenvectors_flat[0]:\n" << eigenvectors_flat[0] << std::endl;
+
+  cudaEventRecord(end);
+  cudaEventSynchronize(end);
+  float milliseconds = 0;
+  cudaEventElapsedTime(&milliseconds, start, end);
+  std::cout << "device: CUDA:0 memsurement | " << "Eigenvalue decomposition runtime: " << milliseconds << " ms" << std::endl;
+
+  auto time_end_cpu = std::chrono::high_resolution_clock::now();
+  auto duration_cpu = std::chrono::duration_cast<std::chrono::microseconds>(time_end_cpu - time_start_cpu);
+  std::cout << "device: CPU    memsurement | " << "Eigenvalue decomposition runtime: " << duration_cpu.count()/1000.0 << " ms" << std::endl;
+
+
+  //--------------------------------------- 
+  //----------------------------------------
+  
+  // std::cout << "eqrly exit here" << std::endl;
+  // exit(0);
+
+
+  // // Reshape the results back to the original shape
+  // eigenvalues_flat.to(torch::kCPU); 
+  // eigenvectors_flat.to(torch::kCPU);
+  // torch::Tensor eigenvalues = torch::real(eigenvalues_flat).view({31, 43, 42, 3});
+  // torch::Tensor eigenvectors = torch::real(eigenvectors_flat).view({31, 43, 42, 3, 3});
+
+  // // For comparison, perform the decomposition using nested loops
+  // torch::Tensor eigenvalues_loop = torch::empty({31, 43, 42, 3});
+  // torch::Tensor eigenvectors_loop = torch::empty({31, 43, 42, 3, 3});
+  // for (int i = 0; i < 31; ++i) {
+  //     for (int j = 0; j < 43; ++j) {
+  //         for (int k = 0; k < 42; ++k) {
+  //             auto [eigvals, eigvecs] = torch::linalg::eig(covs[i][j][k] /*", L"*/);
+  //             eigenvalues_loop[i][j][k] = torch::real(eigvals);
+  //             eigenvectors_loop[i][j][k] = torch::real(eigvecs);
+  //         }
+  //     }
+  // }
+
+  // // Compare the results from the two methods
+  // auto eigenvalues_diff = (eigenvalues.to(torch::kCPU) - eigenvalues_loop).abs().max().item<float>();
+  // auto eigenvectors_diff = (eigenvectors.to(torch::kCPU) - eigenvectors_loop).abs().max().item<float>();
+  // std::cout << "Maximum difference in eigenvalues: " << eigenvalues_diff << std::endl;
+  // std::cout << "Maximum difference in eigenvectors: " << eigenvectors_diff << std::endl;
   
 
-  // Print the data at the specified location
-  std::cout << "eigenvalues[2][6][15]:" << eigenvalues[2][6][15].unsqueeze(0) << std::endl;
-  std::cout << "eigenvectors[2][6][15]:\n" << eigenvectors[2][6][15] << std::endl;
-  std::cout << "eigenvalues_loop[2][6][15]:" << eigenvalues_loop[2][6][15].unsqueeze(0) << std::endl;
-  std::cout << "eigenvectors_loop[2][6][15]:\n" << eigenvectors_loop[2][6][15] << std::endl;
+  // // Print the data at the specified location
+  // std::cout << "eigenvalues[12][16][13]:" << eigenvalues[12][16][13].unsqueeze(0) << std::endl;
+  // std::cout << "eigenvectors[12][16][13]:\n" << eigenvectors[12][16][13] << std::endl;
+  // std::cout << "eigenvalues_loop[12][16][13]:" << eigenvalues_loop[12][16][13].unsqueeze(0) << std::endl;
+  // std::cout << "eigenvectors_loop[12][16][13]:\n" << eigenvectors_loop[12][16][13] << std::endl;
+
+  // torch::Tensor tensor_3x3 = torch::arange(1, 10).reshape({3, 3}).to(torch::kFloat32);
+  // auto [eigvals, eigvecs] = torch::linalg::eig(tensor_3x3);
+  // std::cout << "tensor_3x3: \n" << tensor_3x3 << std::endl;
+  // std::cout << "eigvals: \n" << eigvals << std::endl;
+  // std::cout << "eigvecs: \n" << eigvecs << std::endl;
+  // /*
+  // tensor_3x3: 
+  // 1  2  3
+  // 4  5  6
+  // 7  8  9
+  // [ CPUFloatType{3,3} ]
+  // eigvals: 
+  // 1.6117e+01
+  // -1.1168e+00
+  // 2.9486e-07
+  // [ CPUComplexFloatType{3} ]
+  // eigvecs: 
+  // -0.2320 -0.7858  0.4082
+  // -0.5253 -0.0868 -0.8165
+  // -0.8187  0.6123  0.4082
+  // [ CPUComplexFloatType{3,3} ]
+  // */
+}
+
+void batchMatrixEigenDecomposition2(){
+}
+
+/////////////////////////////////////////PART:17 batch select min eval and correspending-evec /////////////////////////////////////////
+
+void selectMinEigenvalAndEigenVec(){
+  // Example tensor shapes
+  torch::Tensor tensor_se2_evals = torch::randn({31, 37, 36, 3}); // Eigenvalues
+  torch::Tensor tensor_se2_evecs = torch::randn({31, 37, 36, 3, 3}); // Eigenvectors
+  
+
+  // extract min evals and indices
+  auto [min_evals_value, min_evals_indices] = tensor_se2_evals.min(-1, true); 
+  std::cout << "min_evals_value shape: " << min_evals_value.sizes() << std::endl;// [31, 37, 36, 1]
+  std::cout << "min_evals_indices shape: " << min_evals_indices.sizes() << std::endl;//[31, 37, 36, 1]
+
+  //! extract min evecs  
+  auto expanded_indices = min_evals_indices.unsqueeze(3).expand({-1, -1, -1, 3, -1});
+  std::cout << "expanded_indices shape: " << expanded_indices.sizes() << std::endl;// [31, 37, 36, 3, 1]
+  torch::Tensor selected_evecs = tensor_se2_evecs.gather(4, expanded_indices);
+  std::cout << "selected_evecs shape: " << selected_evecs.sizes() << std::endl;// [31, 37, 36, 3, 1]
+
+  //! print certain to verify  
+  std::cout << "tensor_se2_evals[0][0][0]:\n" << tensor_se2_evals[0][0][0] << std::endl;
+  std::cout << "min_evals_value[0][0][0]:\n" << min_evals_value[0][0][0] << std::endl;
+  std::cout << "min_evals_indices[0][0][0]:\n" << min_evals_indices[0][0][0] << std::endl;
+
+  std::cout << "tensor_se2_evecs[0][0][0]:\n" << tensor_se2_evecs[0][0][0] << std::endl;
+  std::cout << "selected_evecs[0][0][0]:\n" << selected_evecs[0][0][0] << std::endl;
+
+
+
+
+  // // 提取最小特征值的索引
+  // auto indices = torch::argmin(tensor_se2_evals, /*dim=*/-1);
+  // std::cout << "indices shape: " << indices.sizes() << std::endl;
+
+  // // 收集最小特征值，保持维度
+  // auto min_vals = tensor_se2_evals.gather(/*dim=*/-1, indices.unsqueeze(-1));
+  // std::cout << "min_vals shape: " << min_vals.sizes() << std::endl;
+
+  // // 提取对应的特征向量
+  // auto selected_evecs = tensor_se2_evecs.index({"...", indices, torch::indexing::Slice()});
+  // std::cout << "selected_evecs shape: " << selected_evecs.sizes() << std::endl;
+}
+
+///////////////////////////////////////////PART: 18 mask tensor test //////////////////////////////////////
+void maskTensorTest(){
+  // 假设 selected_evecs 是一个形状为 [31, 36, 36, 3, 1] 的张量
+  // 这里创建一个示例张量用于演示
+  torch::Tensor selected_evecs = torch::randn({31, 36, 36, 3, 1});
+
+  // 提取最后一个维度的第三个元素（索引为 2）
+  auto third_elements = selected_evecs.index({torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(), 2, 0});
+
+  // 创建一个掩码，标记第三个元素为负的位置
+  auto mask = third_elements < 0.0;
+
+  // 将掩码扩展到与 selected_evecs 相同的形状
+  auto mask_expanded = mask.unsqueeze(-1).unsqueeze(-1);
+
+  // 使用掩码对向量进行取反操作
+  auto corrected_evecs = torch::where(mask_expanded, -selected_evecs, selected_evecs);
+
+  // 打印处理后的张量
+  std::cout << "Processed tensor shape: " << corrected_evecs.sizes() << std::endl;
+
+  // 打印一些随机位置的向量信息
+  std::mt19937 gen(std::random_device{}());
+  std::uniform_int_distribution<int> dis_i(0, 30); // 对应维度 31
+  std::uniform_int_distribution<int> dis_j(0, 35); // 对应维度 36
+  std::uniform_int_distribution<int> dis_k(0, 35); // 对应维度 36
+
+  // 打印几个随机位置的向量
+  for (int sample = 0; sample < 5; ++sample) {
+      int i = dis_i(gen);
+      int j = dis_j(gen);
+      int k = dis_k(gen);
+
+      // 获取原始向量和修正后的向量
+      auto original_vector = selected_evecs[i][j][k];
+      auto corrected_vector = corrected_evecs[i][j][k];
+      bool is_negative = mask[i][j][k].item<bool>();
+
+      std::cout << "\nSample " << sample + 1 << " - Position (" << i << ", " << j << ", " << k << "):" << std::endl;
+      std::cout << "Original Vector: \n" << original_vector.squeeze(-1) << std::endl;
+      std::cout << "Corrected Vector: \n" << corrected_vector.squeeze(-1) << std::endl;
+      std::cout << "Mask (Is Negative): " << std::boolalpha << is_negative << std::endl;
+  }
+}
+
+///////////////////////////////////////////PART: 19 tensor padding //////////////////////////////////////
+void tensorPadding(){
+  // 创建一个形状为 {5,5} 的 tensor
+  torch::Tensor tensor = torch::rand({5, 5});
+  std::cout << "原始 tensor:\n" << tensor << std::endl;
+
+  // 定义填充参数：宽度左右各1和2，高度上下各1和2
+  auto options = torch::nn::functional::PadFuncOptions({1, 2, 1, 2})
+    .mode(torch::kConstant)  // 使用常数填充模式
+    .value(0);               // 填充值为0
+  torch::Tensor padded_tensor = torch::nn::functional::pad(tensor, options);
+
+  std::cout << "填充后的 tensor:\n" << padded_tensor << std::endl;
+}
+//////////////////////////////////////////////PART: 20 se2 Tensor unfold //////////////////////////////////////
+void se2TensorUnfold(){
+  long windows_dimyaw = 2;
+  long windows_dimxy = 3;
+
+  std::vector<int> se2_dim = {5, 10, 10, 1};
+  int product = std::accumulate(se2_dim.begin(), se2_dim.end(), 1, std::multiplies<int>());
+  std::cout << "product: " << product << std::endl;
+
+  auto tensor = torch::arange(0, product).reshape({se2_dim[0], se2_dim[1], se2_dim[2], se2_dim[3]}).to(torch::kFloat32);
+  std::cout << "tensor.sizes(): " << tensor.sizes() << std::endl;
+
+
+  
+  auto yaw_unfold = tensor.unfold(0, windows_dimyaw, 1);
+  std::cout << "yaw_unfold.sizes(): " << yaw_unfold.sizes() << std::endl;
+  
+  std::cout << "tensor[0][0][0]: " << tensor[0][0][0]<< std::endl;
+  std::cout << "tensor[1][0][0]: " << tensor[1][0][0] << std::endl;
+  std::cout << "yaw_unfold[0][0][0]: " << yaw_unfold[0][0][0] << std::endl;
+  
+  std::cout << "tensor[0]: " << tensor[0]<< std::endl;
+  std::cout << "tensor[1]: " << tensor[1] << std::endl;
+  std::cout << "yaw_unfold[0]: " << yaw_unfold[0] << std::endl;
+
+  
+  
+  auto xy_unfold = yaw_unfold.unfold(1, windows_dimxy, 1).unfold(2, windows_dimxy, 1);
+  std::cout << "xy_unfold.sizes(): " << xy_unfold.sizes() << std::endl;
+
 }
 
 
@@ -493,7 +701,7 @@ int main() {
 
   //! PART: 2 compareCPUAndGPU
   std::cout << "\n==========compareCPUAndGPU==========\n";
-  compareCPUAndGPUTest();
+  // compareCPUAndGPUTest();
 
   //! PART: 3 Eigen Decomposition
   std::cout << "\n==========Eigen Decomposition==========\n";
@@ -567,6 +775,60 @@ int main() {
   //! PART: 16 batch eigen-Decomposition
   std::cout << "\n==========PART16: batch eigen-Decomposition==========\n";
   batchMatrixEigenDecomposition();
+  // batchMatrixEigenDecomposition2();
+
+  //！ PART: 17 batch select min eval and correspending-evec
+  std::cout << "\n==========PART17: batch select min eval and correspending-evec==========\n";
+  selectMinEigenvalAndEigenVec();
+
+
+  //! PART: 18 mask tensor
+  std::cout << "\n==========PART18: mask tensor==========\n";
+  maskTensorTest();
+
+  
+  // torch::Tensor tensor1_part18 = torch::rand({41292, 4}).to(device);
+  // torch::Tensor tensor2_part18 = torch::rand({41292, 4}).to(device);
+  // torch::Tensor tensor12_cdist = torch::cdist(tensor1_part18, tensor2_part18, 2);
+  // std::cout << "tensor12_cdist.size(): " << tensor12_cdist.sizes() << std::endl;
+
+  //! PART: 19 tensor padding
+  std::cout << "\n==========PART19: tensor padding==========\n";
+  tensorPadding();
+
+  //! PART: 20 se2 Tensor unfold
+  std::cout << "\n==========PART20: se2 Tensor unfold==========\n";
+  se2TensorUnfold();
+
+  
+  {
+    // 创建 tensor1 和 tensor2
+    torch::Tensor tensor1 = torch::arange(0, 24).reshape({2, 3, 4});
+    std::cout << "tensor1: \n" << tensor1 << std::endl;
+
+    torch::Tensor tensor2 = torch::arange(1000, 1004).reshape({1, 4});
+    std::cout << "tensor2: \n" << tensor2 << std::endl;
+
+    // 创建一个全零张量，形状为 [2, 1, 4]（假设我们要填充到第二维度的第4个位置）
+    torch::Tensor zero_tensor = torch::zeros({2, 1, 4}, tensor1.options());
+    // 将 tensor2 的数据填充到全零张量的指定位置（例如第二维度的第4个位置）
+    zero_tensor.index_put_({torch::indexing::Slice(), 3, torch::indexing::Slice()}, tensor2);
+
+    // 将填充好的全零张量与 tensor1 拼接
+    torch::Tensor result = torch::cat({tensor1, zero_tensor.unsqueeze(1)}, 1);
+    std::cout << "Resulting tensor: \n" << result << std::endl;
+
+  }
+  
+
+
+  
+
+
+  
+
+
+  
 
 
 
