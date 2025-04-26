@@ -1,8 +1,17 @@
+'''
+Author: chasey && melancholycy@gmail.com
+Date: 2025-03-25 05:56:52
+LastEditTime: 2025-04-20 08:40:30
+FilePath: /test/PY_/bgk/plotCovSparse.py
+Description: 
+Reference: 
+Copyright (c) 2025 by chasey && melancholycy@gmail.com, All Rights Reserved. 
+'''
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-def kernel_function(d_i, l=1.0):
+def kernel_function(d_i, l=2.0):
     """
     Compute the kernel function value for given distances d_i and length l.
     

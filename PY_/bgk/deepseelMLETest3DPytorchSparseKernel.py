@@ -5,18 +5,34 @@ from mpl_toolkits.mplot3d import Axes3D
 
 # 0. parameters  
 torch.manual_seed(42)
-N = 200
+N = 500
 D = 2
 noise_data = 0.01
 optimizer_type = 'LBFGS'
 optim_lr = 0.005
-optim_maxiter = 100
+optim_maxiter = 1000
 
 
 # 1. 生成带噪声的3D高程数据 (PyTorch Tensor)
-X_train = torch.rand(N, D) * 10  # NOTE:(100, 2)
-true_elevation = lambda x: 2 * torch.sin(x[:, 0]) + 3 * torch.cos(x[:, 1]) + x[:, 0] + x[:, 1]
+####################################################
+X_train_rand = torch.rand(N, D) * 10  # NOTE:(100, 2) # random points in [0, 10]x[0, 10]
+X_train = X_train_rand.clone()  # NOTE:(100, 2)
+true_elevation = lambda x: 10 * torch.sin(5*x[:, 0]) + 10 * torch.cos(5 * x[:, 1]) + 10 * x[:, 0] + x[:, 1]
 y_train = true_elevation(X_train) + torch.randn(N) * noise_data  # NOTE:(100,)
+
+############################################################
+min_val = 0
+max_val = 10
+res = 0.2
+Ngrid = int((max_val - min_val) / res) + 1
+points = [torch.linspace(min_val, max_val, Ngrid) for _ in range(D)]
+grid = torch.meshgrid(*points, indexing='ij')  # 使用 ij 索引方式
+X_train_grid = torch.stack([grid[i].flatten() for i in range(D)], dim=-1)
+
+X_train = X_train_grid
+print("X_train.shape: ", X_train.shape)
+y_train = true_elevation(X_train) + torch.randn(X_train.size(0)) * noise_data  # NOTE:(100,)
+
 
 # 2. 定义PyTorch版本的RBF核函数
 def rbf_kernel(X, Z, l):
@@ -163,14 +179,14 @@ ax1 = fig.add_subplot(131, projection='3d')
 ax1.plot_surface(X_mesh, Y_mesh, Z_mesh_true, 
                 cmap='viridis', alpha=0.8)
 ax1.scatter(X_train[:,0].numpy(), X_train[:,1].numpy(), y_train.numpy(), 
-           c='r', s=20, label='Noisy Data')
+           c='r', s=1, label='Noisy Data')
 ax1.set_title('True Elevation Map')
 
 # 预测曲面
 ax2 = fig.add_subplot(132, projection='3d')
 surf = ax2.plot_surface(X_mesh, Y_mesh, Z_mesh_pred, cmap='plasma', alpha=0.8)
 ax2.scatter(X_train[:,0].numpy(), X_train[:,1].numpy(), y_train.numpy(), 
-           c='r', s=20)
+           c='r', s=1)
 ax2.set_title(f'Predicted Elevation\nMSE={mse:.2f}, λ={optimal_lambda:.2f}, l={optimal_l:.2f}')
 fig.colorbar(surf, ax=ax2)
 
