@@ -1,7 +1,7 @@
 '''
 Author: chasey melancholycy@gmail.com
 Date: 2025-02-19 09:14:24
-FilePath: /mesh_planner/test/python/visExtNode.py
+FilePath: /test/PY_/visExtNode.py
 Description: 
 
 Copyright (c) 2025 by chasey (melancholycy@gmail.com), All Rights Reserved. 
@@ -28,7 +28,7 @@ def state_trans(x, u, dt):
 param = {
     'vMax': 2.0,
     'wMax': 1.0,
-    'dt': 0.3,
+    'dt': 1.0,
     'collSampleTime': 0.06
 }
 
@@ -39,8 +39,8 @@ cur = np.array([0.0, 0.0, -0.51037])  # 初始位置 (x, y) 和方向 theta
 trajectories = []
 
 # 遍历速度和角速度
-for v in np.arange(0, param['vMax']+1e-5, 0.5):
-    for w in np.arange(-param['wMax']-1e-5, param['wMax']+1e-5, 1.0):
+for v in np.arange(0, param['vMax']+1e-5, 1.0):
+    for w in np.arange(-param['wMax']-1e-5, param['wMax']+1e-5, param['wMax']/2):
         # 初始状态
         x_temp = cur.copy()
         trajectory = [x_temp[:2]]  # 存储 (x, y) 轨迹

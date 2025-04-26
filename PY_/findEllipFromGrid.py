@@ -37,7 +37,7 @@ resolution = 0.2
 ellipse_center_x, ellipse_center_y = 1.1, 1.1
 semi_major_axis = resolution * 3 + resolution/2  # 半长轴 
 semi_minor_axis = resolution * 2 + resolution/2  # 半短轴
-rotation_angle = 180  # 旋转角度（单位：度）
+rotation_angle = -154.699  # 旋转角度（单位：度）
 
 # 计算 a^2 和 b^2 的倒数
 aSquaInv = 1 / (semi_major_axis ** 2)

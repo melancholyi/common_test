@@ -27,3 +27,17 @@ print(getC(0.19,0.14))
 
 
 print(np.log(1e30))
+
+
+# input values's range must be in [-1, 1] 
+print('arccos(-1)', np.arccos(-1))   # 2.00 * pi
+print('arccos(-0.5)', np.arccos(-0.5)) # 0.67 * pi
+print('arccos(0)', np.arccos( 0))   # 0.50 * pi
+print('arccos(0.5)', np.arccos(0.5))  # 0.33 * pi
+print('arccos(1)', np.arccos( 1))   # 0.00 * pi
+
+
+
+
+
+
