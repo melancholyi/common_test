@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-04-26 06:33:52
+ * @LastEditTime: 2025-04-30 20:30:29
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -13,6 +13,8 @@
 #include <Eigen/Core>
 #include <cmath>
 #include <cuda_runtime.h>
+#include <cassert>
+#include <cassert>
 
 #include <vector>
 #include <random>
@@ -655,26 +657,386 @@ void se2TensorUnfold(){
   auto tensor = torch::arange(0, product).reshape({se2_dim[0], se2_dim[1], se2_dim[2], se2_dim[3]}).to(torch::kFloat32);
   std::cout << "tensor.sizes(): " << tensor.sizes() << std::endl;
 
-
-  
   auto yaw_unfold = tensor.unfold(0, windows_dimyaw, 1);
   std::cout << "yaw_unfold.sizes(): " << yaw_unfold.sizes() << std::endl;
   
-  std::cout << "tensor[0][0][0]: " << tensor[0][0][0]<< std::endl;
-  std::cout << "tensor[1][0][0]: " << tensor[1][0][0] << std::endl;
-  std::cout << "yaw_unfold[0][0][0]: " << yaw_unfold[0][0][0] << std::endl;
+  // std::cout << "tensor[0][0][0]: " << tensor[0][0][0]<< std::endl;
+  // std::cout << "tensor[1][0][0]: " << tensor[1][0][0] << std::endl;
+  // std::cout << "yaw_unfold[0][0][0]: " << yaw_unfold[0][0][0] << std::endl;
   
-  std::cout << "tensor[0]: " << tensor[0]<< std::endl;
-  std::cout << "tensor[1]: " << tensor[1] << std::endl;
-  std::cout << "yaw_unfold[0]: " << yaw_unfold[0] << std::endl;
-
-  
+  // std::cout << "tensor[0]: " << tensor[0]<< std::endl;
+  // std::cout << "tensor[1]: " << tensor[1] << std::endl;
+  // std::cout << "yaw_unfold[0]: " << yaw_unfold[0] << std::endl;
   
   auto xy_unfold = yaw_unfold.unfold(1, windows_dimxy, 1).unfold(2, windows_dimxy, 1);
   std::cout << "xy_unfold.sizes(): " << xy_unfold.sizes() << std::endl;
-
 }
 
+/////////////////////////////////////////////PART: 21 tensor slice and assign //////////////////////////////////////
+void tensorSliceAndAssign() {
+    // 创建一个 7x6x10 的三维 tensor，默认为浮点类型，并在 GPU 上分配
+    torch::Tensor big_tensor = torch::zeros({7, 6, 10}, torch::device(torch::kCUDA));
+
+    // 创建7个单独的二维 tensor 4x6的张量，并填充特定的值
+    std::vector<torch::Tensor> small_tensors;
+    for (int i = 0; i < 7; ++i) {
+        if (i == 0) {
+            small_tensors.push_back(torch::arange(1, 25).view({4, 6})); // 生成24个元素
+            std::cout << "small_tensors[0]: \n" << small_tensors[0] << std::endl;
+        } else if (i == 1) {
+            small_tensors.push_back(torch::arange(100, 124).view({4, 6})); // 生成24个元素
+            std::cout << "small_tensors[1]: \n" << small_tensors[1] << std::endl;
+        } else if (i == 2) {
+            small_tensors.push_back(torch::arange(1000, 1024).view({4, 6})); // 生成24个元素
+            std::cout << "small_tensors[" << i << "]: \n" << small_tensors[i] << std::endl;
+        } else {
+            // 生成其他张量数据，确保元素数量为24
+            small_tensors.push_back(torch::arange(i * 1000 + 1, i * 1000 + 25).view({4, 6}));
+            std::cout << "small_tensors[" << i << "]: \n" << small_tensors[i] << std::endl;
+        }
+    }
+
+    // 为每个小 tensor 生成随机索引
+    std::vector<std::tuple<int, int, int>> random_indices;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis_dim1(0, 5); // 第二维的索引范围是 0-5
+    std::uniform_int_distribution<> dis_dim2(0, 9); // 第三维的索引范围是 0-9
+
+    for (int i = 0; i < 7; ++i) {
+        int dim0 = i;
+        int dim1 = dis_dim1(gen);
+        int dim2 = dis_dim2(gen);
+        random_indices.push_back(std::make_tuple(dim0, dim1, dim2));
+        std::cout << "Random indices for small tensor " << i << ": (" << dim0 << ", " << dim1 << ", " << dim2 << ")" << std::endl;
+    }
+
+    // 将每个小 tensor 填充到三维 tensor 的相应位置
+    for (int i = 0; i < 7; ++i) {
+        int dim0 = std::get<0>(random_indices[i]);
+        int dim1 = std::get<1>(random_indices[i]);
+        int dim2 = std::get<2>(random_indices[i]);
+
+        // 计算可以容纳的小 tensor 的尺寸
+        int available_rows = std::min(4, static_cast<int>(big_tensor.size(1)) - dim1);
+        int available_cols = std::min(6, static_cast<int>(big_tensor.size(2)) - dim2);
+
+        // 裁剪小 tensor
+        torch::Tensor cropped_small_tensor = small_tensors[i].slice(0, 0, available_rows).slice(1, 0, available_cols);
+
+        // 填充到大 tensor
+        big_tensor.index({dim0, torch::indexing::Slice(dim1, dim1 + available_rows), torch::indexing::Slice(dim2, dim2 + available_cols)})
+            .copy_(cropped_small_tensor);
+    }
+
+    // 打印填充后的三维 tensor
+    std::cout << "Big Tensor after filling:" << std::endl;
+    std::cout << big_tensor << std::endl;
+
+    // 定义窗口大小
+    int windows_dim0 = 3;
+    int windows_dim1 = 5;
+    int windows_dim2 = 5;
+    assert(windows_dim0 % 2 == 1 && windows_dim1 % 2 == 1 && windows_dim2 % 2 == 1);
+      
+    /*
+    dim0:  origin0 - windows_dim0 + 1   
+    dim1:  origin1 - windows_dim1 + 1   
+    dim2:  origin2 - windows_dim2 + 1   
+    */
+
+    // 计算 padding 大小以保持 unfold 后的维度不变
+    int pad_dim0 = (windows_dim0 - 1) / 2;
+    int pad_dim1 = (windows_dim1 - 1) / 2;
+    int pad_dim2 = (windows_dim2 - 1) / 2;
+    std::cout << "pad_dim0: " << pad_dim0 << std::endl;//1
+    std::cout << "pad_dim1: " << pad_dim1 << std::endl;//2
+    std::cout << "pad_dim2: " << pad_dim2 << std::endl;//2
+
+
+    // 定义填充参数：宽度左右各1和2，高度上下各1和2
+    //NOTE: padding is the last dim -> first dim
+    auto options = torch::nn::functional::PadFuncOptions({pad_dim2, pad_dim2, pad_dim1, pad_dim1, pad_dim0, pad_dim0})
+      .mode(torch::kConstant)  // 使用常数填充模式
+      .value(1e5);               // 填充值为0
+    torch::Tensor big_tensor_padded = torch::nn::functional::pad(big_tensor, options);
+    std::cout << "big_tensor_padded.sizes(): " << big_tensor_padded.sizes() << std::endl;
+
+    // 执行 unfold 操作
+    auto big_tensor_unfold = big_tensor_padded.unfold(0, windows_dim0, 1)
+        .unfold(1, windows_dim1, 1).unfold(2, windows_dim2, 1);
+
+
+    std::cout << "big_tensor_unfold.sizes(): " << big_tensor_unfold.sizes() << std::endl;
+    std::cout << "big_tensor_unfold[6][4][9]: \n" << big_tensor_unfold[6][4][9].to(torch::kCPU) << std::endl;
+}
+
+///////////////////////////////////////////PART: 22 FixedTensorBuffer //////////////////////////////////////
+class FixedTensorBuffer{
+  public://membership function
+    FixedTensorBuffer(const int& capacity): capacity_(capacity){
+      device_ = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+    }
+    size_t size() const {
+      return data_.size();
+    }
+    bool empty() const {
+      return data_.empty();
+    }
+    void insert(const torch::Tensor& tensor) {
+      if (data_.size() >= capacity_) {
+        data_.pop_front();
+      }
+      auto temp = tensor;
+      temp = temp.to(device_);
+      data_.push_back(temp);
+    }
+    const torch::Tensor& getTensor(const size_t& index) const {
+      if (index >= data_.size()) {
+          throw std::out_of_range("Index out of range");
+      }
+      return data_[index];
+    }
+  private://membership function
+
+  public://membership variable
+
+  private://membership variable
+    std::deque<torch::Tensor> data_;
+    int capacity_;
+    torch::DeviceType device_;
+};
+
+
+
+void testFixedTensorBuffer(){
+  FixedTensorBuffer buffer(3);
+  std::cout << "buffer.size(): " << buffer.size() << std::endl;
+  std::cout << "buffer.empty(): " << buffer.empty() << std::endl;
+
+  for (int i = 0; i < 5; ++i) {
+    torch::Tensor tensor = torch::ones({i+1, i+1}) * i;
+    tensor.to(torch::kCUDA);
+    buffer.insert(tensor);
+    std::cout << "buffer.size(): " << buffer.size() << std::endl;
+    std::cout << "buffer.empty(): " << buffer.empty() << std::endl;
+    std::cout << "buffer.getTensor("<< 0 <<"):\n" << buffer.getTensor(0) << std::endl;
+  }
+  std::cout << "buffer.getTensor("<< 2 <<"):\n" << buffer.getTensor(2) << std::endl;
+}
+
+//////////////////////////////////////////////PART: 23 LocalTensorBuffer //////////////////////////////////////
+// class LocalTensorBuffer{
+//   public://membership function
+//     LocalTensorBuffer(const int& capacity): capacity_(capacity){
+//       device_ = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+//     }
+//     size_t size() const {
+//       return data_.size();
+//     }
+//     bool empty() const {
+//       return data_.empty();
+//     }
+//     /**
+//      * @brief:: 
+//      * @param {Tensor&} se2Info: 
+//      * @param {Tensor&} gridPos: 
+//      * @attention: 
+//      * @return {*}
+//      */    
+//     void insert(const torch::Tensor& se2Info, const torch::Tensor& gridPos){
+//       torch::Tensor tensor_fused, cov_fused;
+//       auto temp1 = se2Info;
+//       auto temp2 = gridPos;
+//       temp1 = temp1.to(device_);
+//       temp2 = temp2.to(device_);
+//       if (data_.size() >= capacity_) {
+//         //TODO: fuse the new data with the old data by using STBGKI regression
+//         [tensor_fused, cov_fused]  = fuseThroughSpatioTemporalBGKI();
+//         data_.pop_front();
+//       }
+//       data_.push_back({tensor_fused, temp2});
+//     }
+//     const std::pair<torch::Tensor, torch::Tensor>& getTensor(const size_t& index) const {
+//       if (index >= data_.size()) {
+//           throw std::out_of_range("Index out of range");
+//       }
+//       return data_[index];
+//     }
+//     void fuseThroughSpatioTemporalBGKI(){
+//       if(data_.size() < capacity_){
+//         std::cout << "buffer size not enough, now: " << data_.size() << std::endl;
+//         return;
+//       }
+//     }
+//   private://membership function
+//     /**
+//      * @brief:: 
+//      * @attention: start1, start2: [x, y]  shape1, shape2: [h, w]. the must be 2D type
+//      * @return {*}
+//      */  
+//     std::tuple<torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice> 
+//     getOverlapRegion2D(const torch::Tensor& start1, const torch::IntArrayRef& shape1, 
+//                       const torch::Tensor& start2, const torch::IntArrayRef& shape2, double resolution) {
+//       // 计算两个张量在 x 和 y 方向上的重叠区域
+//       double x1_start = start1[0].item<double>();
+//       double x1_end = x1_start + (shape1[0] - 1) * resolution;
+//       double y1_start = start1[1].item<double>();
+//       double y1_end = y1_start + (shape1[1] - 1) * resolution;
+
+//       double x2_start = start2[0].item<double>();
+//       double x2_end = x2_start + (shape2[0] - 1) * resolution;
+//       double y2_start = start2[1].item<double>();
+//       double y2_end = y2_start + (shape2[1] - 1) * resolution;
+
+//       // 计算重叠区域的边界
+//       double overlap_x_start = std::max(x1_start, x2_start); // 0 
+//       double overlap_x_end = std::min(x1_end, x2_end);       // 0.8
+//       double overlap_y_start = std::max(y1_start, y2_start); // 0 
+//       double overlap_y_end = std::min(y1_end, y2_end);       // 0.8
+
+//       // 打印重叠区域
+//       // std::cout << "Overlap Region: [" << overlap_x_start << ", " << overlap_x_end << "], ["
+//       //           << overlap_y_start << ", " << overlap_y_end << "]" << std::endl;
+
+//       // 计算重叠区域在 tensor1 中的索引范围
+//       int tensor1_x_start = std::round((overlap_x_start - x1_start) / resolution);
+//       int tensor1_x_end = std::round((overlap_x_end - x1_start) / resolution);
+//       int tensor1_y_start = std::round((overlap_y_start - y1_start) / resolution);
+//       int tensor1_y_end = std::round((overlap_y_end - y1_start) / resolution);
+//       // std::cout << "tensor1 indices: [" << tensor1_x_start << ", " << tensor1_x_end << "], ["
+//       //           << tensor1_y_start << ", " << tensor1_y_end << "]" << std::endl;
+
+//       // 计算重叠区域在 tensor2 中的索引范围
+//       int tensor2_x_start = std::round((overlap_x_start - x2_start) / resolution);// (0 - -1) / 0.2 = 5
+//       int tensor2_x_end = std::round((overlap_x_end - x2_start) / resolution);
+//       int tensor2_y_start = std::round((overlap_y_start - y2_start) / resolution);
+//       int tensor2_y_end = std::round((overlap_y_end - y2_start) / resolution);
+//       // std::cout << "tensor2 indices: [" << tensor2_x_start << ", " << tensor2_x_end << "], ["
+//       //           << tensor2_y_start << ", " << tensor2_y_end << "]" << std::endl;
+
+//       // 返回切片对象
+//       return {torch::indexing::Slice(tensor1_x_start, tensor1_x_end + 1),
+//               torch::indexing::Slice(tensor1_y_start, tensor1_y_end + 1),
+//               torch::indexing::Slice(tensor2_x_start, tensor2_x_end + 1),
+//               torch::indexing::Slice(tensor2_y_start, tensor2_y_end + 1)};
+//     }
+
+//   public://membership variable
+
+//   private://membership variable
+//     std::deque<std::pair<torch::Tensor, torch::Tensor>> data_;
+//     int capacity_;
+//     torch::DeviceType device_;
+// };
+
+
+torch::Tensor generateGridTensor(int height, int width, float resolution, const std::pair<float, float>& start) {
+  // 创建一个形状为 height x width x 2 的张量，初始化为 0
+  auto options = torch::TensorOptions().dtype(torch::kF32);
+  torch::Tensor grid = torch::zeros({height, width, 2}, options);
+
+  // 填充张量
+  for (int i = 0; i < height; ++i) {
+      for (int j = 0; j < width; ++j) {
+          grid[i][j][0] = start.first + i * resolution;
+          grid[i][j][1] = start.second + j * resolution;
+      }
+  }
+  return grid;
+}
+
+
+
+std::tuple<torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice> 
+getOverlapRegion2D(const torch::Tensor& start1, const torch::IntArrayRef& shape1, 
+                   const torch::Tensor& start2, const torch::IntArrayRef& shape2, float resolution) {
+    // 计算两个张量在 x 和 y 方向上的重叠区域
+    float x1_start = start1[0].item<float>();
+    float x1_end = x1_start + (shape1[0] - 1) * resolution;
+    float y1_start = start1[1].item<float>();
+    float y1_end = y1_start + (shape1[1] - 1) * resolution;
+
+    float x2_start = start2[0].item<float>();
+    float x2_end = x2_start + (shape2[0] - 1) * resolution;
+    float y2_start = start2[1].item<float>();
+    float y2_end = y2_start + (shape2[1] - 1) * resolution;
+
+    // 计算重叠区域的边界
+    float overlap_x_start = std::max(x1_start, x2_start); // 0 
+    float overlap_x_end = std::min(x1_end, x2_end);       // 0.8
+    float overlap_y_start = std::max(y1_start, y2_start); // 0 
+    float overlap_y_end = std::min(y1_end, y2_end);       // 0.8
+
+    // 打印重叠区域
+    // std::cout << "Overlap Region: [" << overlap_x_start << ", " << overlap_x_end << "], ["
+    //           << overlap_y_start << ", " << overlap_y_end << "]" << std::endl;
+
+    // 计算重叠区域在 tensor1 中的索引范围
+    int tensor1_x_start = std::round((overlap_x_start - x1_start) / resolution);
+    int tensor1_x_end = std::round((overlap_x_end - x1_start) / resolution);
+    int tensor1_y_start = std::round((overlap_y_start - y1_start) / resolution);
+    int tensor1_y_end = std::round((overlap_y_end - y1_start) / resolution);
+    // std::cout << "tensor1 indices: [" << tensor1_x_start << ", " << tensor1_x_end << "], ["
+    //           << tensor1_y_start << ", " << tensor1_y_end << "]" << std::endl;
+
+    // 计算重叠区域在 tensor2 中的索引范围
+    int tensor2_x_start = std::round((overlap_x_start - x2_start) / resolution);// (0 - -1) / 0.2 = 5
+    int tensor2_x_end = std::round((overlap_x_end - x2_start) / resolution);
+    int tensor2_y_start = std::round((overlap_y_start - y2_start) / resolution);
+    int tensor2_y_end = std::round((overlap_y_end - y2_start) / resolution);
+    // std::cout << "tensor2 indices: [" << tensor2_x_start << ", " << tensor2_x_end << "], ["
+    //           << tensor2_y_start << ", " << tensor2_y_end << "]" << std::endl;
+
+    // 返回切片对象
+    return {torch::indexing::Slice(tensor1_x_start, tensor1_x_end + 1),
+            torch::indexing::Slice(tensor1_y_start, tensor1_y_end + 1),
+            torch::indexing::Slice(tensor2_x_start, tensor2_x_end + 1),
+            torch::indexing::Slice(tensor2_y_start, tensor2_y_end + 1)};
+}
+
+
+void testLocalTensorBuffer(){
+  float resolution = 1.0;
+  auto target_tensor = generateGridTensor(10, 10, resolution, {0.0, 0.0});
+  auto target_value = torch::ones_like(target_tensor) * 1.0;
+  // std::cout << "target_tensor: \n" << target_tensor << std::endl;
+  // std::cout << "target_value: \n" << target_value << std::endl;
+
+  std::vector<std::pair<double, double>> starts = {{-5, -5}, {-5, 5}, {5, -5}, {5, 5}};
+  std::vector<torch::Tensor> tensor_pos_vec;
+  for (const auto& start : starts) {
+    auto tensor_pos = generateGridTensor(10, 10, resolution, start);
+    tensor_pos_vec.push_back(tensor_pos);
+    // std::cout << "tensor_pos: \n" << tensor_pos << std::endl;
+  }
+
+  auto sizes = target_tensor.sizes();
+  torch::Tensor tensor_all_cat = zeros_like(target_tensor).unsqueeze(0).expand({(long)tensor_pos_vec.size(), -1, -1, -1});
+  std::cout << "tensor_all_cat.sizes(): " << tensor_all_cat.sizes() << std::endl;
+  
+  std::vector<torch::Tensor> tensor_cats;
+  
+  for(const auto& tensor_pos : tensor_pos_vec){
+    static int count = -1;
+    count++;
+    std::cout << "==========tensor_pos new frame" << std::endl;
+    //! overlap region extraction
+    auto [tensor1_slicex, tensor1_slicey, tensor2_slicex, tensor2_slicey] = getOverlapRegion2D(target_tensor[0][0], target_tensor.sizes(), tensor_pos[0][0], tensor_pos.sizes(), resolution);
+    auto tensor1_overlap = target_tensor.index({tensor1_slicex, tensor1_slicey});
+    auto tensor2_overlap = tensor_pos.index({tensor2_slicex, tensor2_slicey});      
+    auto temp_tensor = torch::zeros_like(target_tensor);
+    temp_tensor.index_put_({tensor1_slicex, tensor1_slicey, torch::indexing::Slice()}, tensor2_overlap);
+    tensor_cats.push_back(temp_tensor.unsqueeze(0));
+  }
+  std::cout << "tensor_cats.size(): " << tensor_cats.size() << std::endl;
+  auto fally_tensor = torch::cat(tensor_cats, 0);
+  std::cout << "fally_tensor.sizes(): " << fally_tensor.sizes() << std::endl;
+  std::cout << (fally_tensor[0] - tensor_cats[0]).abs().sum() << std::endl;
+  std::cout << (fally_tensor[1] - tensor_cats[1]).abs().sum() << std::endl;
+  std::cout << (fally_tensor[2] - tensor_cats[2]).abs().sum() << std::endl;
+  std::cout << (fally_tensor[3] - tensor_cats[3]).abs().sum() << std::endl;
+}
 
 int main() {
   //! PART: 0 test
@@ -801,24 +1163,48 @@ int main() {
   se2TensorUnfold();
 
   
-  {
-    // 创建 tensor1 和 tensor2
-    torch::Tensor tensor1 = torch::arange(0, 24).reshape({2, 3, 4});
-    std::cout << "tensor1: \n" << tensor1 << std::endl;
+  // {
+  //   // 创建 tensor1 和 tensor2
+  //   torch::Tensor tensor1 = torch::arange(0, 24).reshape({2, 3, 4});
+  //   std::cout << "tensor1: \n" << tensor1 << std::endl;
 
-    torch::Tensor tensor2 = torch::arange(1000, 1004).reshape({1, 4});
-    std::cout << "tensor2: \n" << tensor2 << std::endl;
+  //   torch::Tensor tensor2 = torch::arange(1000, 1004).reshape({1, 4});
+  //   std::cout << "tensor2: \n" << tensor2 << std::endl;
 
-    // 创建一个全零张量，形状为 [2, 1, 4]（假设我们要填充到第二维度的第4个位置）
-    torch::Tensor zero_tensor = torch::zeros({2, 1, 4}, tensor1.options());
-    // 将 tensor2 的数据填充到全零张量的指定位置（例如第二维度的第4个位置）
-    zero_tensor.index_put_({torch::indexing::Slice(), 3, torch::indexing::Slice()}, tensor2);
+  //   // 创建一个全零张量，形状为 [2, 1, 4]（假设我们要填充到第二维度的第4个位置）
+  //   torch::Tensor zero_tensor = torch::zeros({2, 1, 4}, tensor1.options());
+  //   // 将 tensor2 的数据填充到全零张量的指定位置（例如第二维度的第4个位置）
+  //   zero_tensor.index_put_({torch::indexing::Slice(), 3, torch::indexing::Slice()}, tensor2);
 
-    // 将填充好的全零张量与 tensor1 拼接
-    torch::Tensor result = torch::cat({tensor1, zero_tensor.unsqueeze(1)}, 1);
-    std::cout << "Resulting tensor: \n" << result << std::endl;
+  //   // 将填充好的全零张量与 tensor1 拼接
+  //   torch::Tensor result = torch::cat({tensor1, zero_tensor.unsqueeze(1)}, 1);
+  //   std::cout << "Resulting tensor: \n" << result << std::endl;
 
-  }
+  // }
+  
+  //! PART: 21 tensor slice and assign
+  std::cout << "\n==========PART21: tensor slice and assign==========\n";
+  tensorSliceAndAssign();
+
+  //! PART: 22 FixedTensorBuffer
+  std::cout << "\n==========PART22: FixedTensorBuffer==========\n";
+  testFixedTensorBuffer();
+
+  //! PART: 23 LocalTensorBuffer
+  std::cout << "\n==========PART23: LocalTensorBuffer==========\n";
+  testLocalTensorBuffer();
+
+
+  
+  torch::Tensor yaws_31x1 = torch::arange(0, 31).view({31,1});
+  std::cout << "yaws_31x1.sizes()" << yaws_31x1.sizes() << std::endl;
+
+  std::cout << "yaws_31x1[0]" << yaws_31x1[0] << std::endl;
+
+  auto yaws_31x37x36x1 = yaws_31x1.unsqueeze(1).unsqueeze(1).expand({-1, 37, 36, -1});
+
+  std::cout << "yaws_31x37x36x1.sizes()" << yaws_31x37x36x1.sizes() << std::endl;
+  std::cout << "yaws_31x37x36x1[1].abs().sum()" << yaws_31x37x36x1[1].abs().sum() << std::endl;
   
 
 
