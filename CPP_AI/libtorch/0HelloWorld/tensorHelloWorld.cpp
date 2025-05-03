@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-04-30 20:30:29
+ * @LastEditTime: 2025-05-03 14:04:29
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -931,6 +931,21 @@ void testFixedTensorBuffer(){
 // };
 
 
+// torch::Tensor generateGridTensor(int height, int width, float resolution, const std::pair<float, float>& start) {
+//   // 创建一个形状为 height x width x 2 的张量，初始化为 0
+//   auto options = torch::TensorOptions().dtype(torch::kF32);
+//   torch::Tensor grid = torch::zeros({height, width, 2}, options);
+
+//   // 填充张量
+//   for (int i = 0; i < height; ++i) {
+//       for (int j = 0; j < width; ++j) {
+//           grid[i][j][0] = start.first + i * resolution;
+//           grid[i][j][1] = start.second + j * resolution;
+//       }
+//   }
+//   return grid;
+// }
+
 torch::Tensor generateGridTensor(int height, int width, float resolution, const std::pair<float, float>& start) {
   // 创建一个形状为 height x width x 2 的张量，初始化为 0
   auto options = torch::TensorOptions().dtype(torch::kF32);
@@ -939,8 +954,8 @@ torch::Tensor generateGridTensor(int height, int width, float resolution, const 
   // 填充张量
   for (int i = 0; i < height; ++i) {
       for (int j = 0; j < width; ++j) {
-          grid[i][j][0] = start.first + i * resolution;
-          grid[i][j][1] = start.second + j * resolution;
+          grid[i][j][0] = std::round((start.first + i * resolution) * 1000.0) / 1000.0;
+          grid[i][j][1] = std::round((start.second + j * resolution) * 1000.0) / 1000.0;
       }
   }
   return grid;
@@ -1037,6 +1052,226 @@ void testLocalTensorBuffer(){
   std::cout << (fally_tensor[2] - tensor_cats[2]).abs().sum() << std::endl;
   std::cout << (fally_tensor[3] - tensor_cats[3]).abs().sum() << std::endl;
 }
+
+
+//////////////////////////////////////////////PART: 24 LocalTensorBuffer //////////////////////////////////////
+float res_yaw = 0.2;
+float res_xy = 0.2;
+
+class LocalTensorBuffer{
+  private:
+    struct MapInfo{
+      torch::Tensor se2Info;
+      torch::Tensor gridPos;
+      float timestamp;
+    };
+  public://membership function
+    LocalTensorBuffer(const int& capacity, const torch::Tensor& yawTensor): capacity_(capacity), yawTensor_(yawTensor){
+      device_ = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+      dtype_ = torch::kFloat32;
+    }
+    size_t size() const {
+      return data_.size();
+    }
+    bool empty() const {
+      return data_.empty();
+    }
+    /**
+     * @brief:: 
+     * @param {Tensor&} se2Info: 
+     * @param {Tensor&} gridPos: 
+     * @attention: 
+     * @return {*}
+     */    
+    void insert(const torch::Tensor& se2Info, const torch::Tensor& gridPos, const float& timestamp){
+      torch::Tensor tensor_fused, cov_fused;
+      auto temp1 = se2Info;
+      auto temp2 = gridPos;
+      temp1 = temp1.to(device_);
+      temp2 = temp2.to(device_);
+      if (data_.size() >= capacity_) {
+        //TODO: fuse the new data with the old data by using STBGKI regression
+        std::cout << "🐶 fuse the new data with the old data by using STBGKI regression" << std::endl;
+        auto [tensor_fused, cov_fused]  = fuseThroughSpatioTemporalBGKI(temp1, temp2, timestamp);
+        data_.pop_front();
+      }else{
+        std::cout << "🧋 buffer size not enough, now: " << data_.size() << std::endl;
+        // std::cout << "INPUT: se2info.sizes(): " << se2Info.sizes() << " gridPos.sizes():" << gridPos.sizes() << std::endl;
+        // std::cout << "INPUT: se2info.abs().sum(): \n" << se2Info.abs().sum() << std::endl;
+        // std::cout << "INPUT: gridPos[0][0]: \n" << gridPos[0][0] << std::endl;
+        // std::cout << "INPUT: gridPos[36][35]: \n" << gridPos[36][35] << std::endl;
+        // std::cout << "timestamp: " << timestamp << std::endl;
+        tensor_fused = temp1;
+      }
+      data_.push_back({tensor_fused, temp2, timestamp});
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor> fuseThroughSpatioTemporalBGKI(const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
+      if(data_.size() < capacity_){
+        std::cout << "buffer size not enough, now: " << data_.size() << std::endl;
+        return {torch::Tensor(), torch::Tensor()};
+      }
+
+      //! extract the overlap region se2TimeY([]) and se2TimeX([])
+      std::vector<torch::Tensor> se2TimeY, se2TimeX;
+      for(auto data : data_){
+        //! overlap region extraction
+        auto [new_sx, new_sy, old_sx, old_sy] = 
+          getOverlapRegion2D(new_gridPos[0][0], new_gridPos.sizes(), data.gridPos[0][0], data.gridPos.sizes(), res_xy);
+        
+        //! se2TimeY
+        auto old_se2Info_extraced = torch::zeros_like(new_se2Info);//31x37x36x4
+        old_se2Info_extraced.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, data.se2Info.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()}));
+        // std::cout << "old_se2Info_extraced.sizes(): " << old_se2Info_extraced.sizes() << std::endl;
+        se2TimeY.push_back(old_se2Info_extraced.unsqueeze(0));
+
+        //! se2TimeX  
+        auto yaw_expand = yawTensor_.unsqueeze(1).unsqueeze(1).expand({-1, new_gridPos.size(0), new_gridPos.size(1), -1}).to(dtype_).to(device_);//31x37x36x1
+        auto gridPos_expand = new_gridPos.unsqueeze(0).expand({yawTensor_.size(0), -1, -1, -1}).to(dtype_).to(device_);//31x37x36x2
+        auto timestamp_expand = torch::ones({yawTensor_.size(0), new_gridPos.size(0), new_gridPos.size(1), 1}).to(dtype_).to(device_) * new_timestamp;//31x37x36x1
+        auto se2TimeX_temp = torch::cat({yaw_expand, gridPos_expand, timestamp_expand}, 3).to(dtype_).to(device_);//31x37x36x4
+        se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
+
+        //! cat yaw, gridPos, timestamp
+        // auto se2Info_31x37x36x4 = torch::cat({yaw_31x37x36x1, gridPos_31x37x36x2, timestamp_31x37x36x1}, 3).to(dtype_).to(device_);
+        // std::cout << "se2Info_31x37x36x4.sizes(): " << se2Info_31x37x36x4.sizes() << std::endl;
+
+        
+        
+
+
+        //! debug  
+        auto new_gridPos_overlap = new_gridPos.index({new_sx, new_sy});
+        auto old_gridPos_overlap = data.gridPos.index({old_sx, old_sy});
+        auto temp_sub = new_gridPos_overlap - old_gridPos_overlap;
+        std::cout << "overlap diff: " << temp_sub.abs().sum() << std::endl;
+      }
+
+      //! cat data  
+      auto se2TimeY_cated = torch::cat(se2TimeY, 0);
+      auto se2TimeX_cated = torch::cat(se2TimeX, 0);
+      std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
+      std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
+
+      return {torch::Tensor(), torch::Tensor()};
+    }
+  private://membership function
+    /**
+     * @brief:: 
+     * @attention: start1, start2: [x, y]  shape1, shape2: [h, w]. the must be 2D type
+     * @return {*}
+     */  
+    std::tuple<torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice> 
+    getOverlapRegion2D(const torch::Tensor& start1, const torch::IntArrayRef& shape1, 
+                      const torch::Tensor& start2, const torch::IntArrayRef& shape2, double resolution) {
+      // 计算两个张量在 x 和 y 方向上的重叠区域
+      double x1_start = start1[0].item<double>();
+      double x1_end = x1_start + (shape1[0] - 1) * resolution;
+      double y1_start = start1[1].item<double>();
+      double y1_end = y1_start + (shape1[1] - 1) * resolution;
+
+      double x2_start = start2[0].item<double>();
+      double x2_end = x2_start + (shape2[0] - 1) * resolution;
+      double y2_start = start2[1].item<double>();
+      double y2_end = y2_start + (shape2[1] - 1) * resolution;
+
+      // 计算重叠区域的边界
+      double overlap_x_start = std::max(x1_start, x2_start); // 0 
+      double overlap_x_end = std::min(x1_end, x2_end);       // 0.8
+      double overlap_y_start = std::max(y1_start, y2_start); // 0 
+      double overlap_y_end = std::min(y1_end, y2_end);       // 0.8
+
+      // 打印重叠区域
+      // std::cout << "Overlap Region: [" << overlap_x_start << ", " << overlap_x_end << "], ["
+      //           << overlap_y_start << ", " << overlap_y_end << "]" << std::endl;
+
+      // 计算重叠区域在 tensor1 中的索引范围
+      int tensor1_x_start = std::round((overlap_x_start - x1_start) / resolution);
+      int tensor1_x_end = std::round((overlap_x_end - x1_start) / resolution);
+      int tensor1_y_start = std::round((overlap_y_start - y1_start) / resolution);
+      int tensor1_y_end = std::round((overlap_y_end - y1_start) / resolution);
+      // std::cout << "tensor1 indices: [" << tensor1_x_start << ", " << tensor1_x_end << "], ["
+      //           << tensor1_y_start << ", " << tensor1_y_end << "]" << std::endl;
+
+      // 计算重叠区域在 tensor2 中的索引范围
+      int tensor2_x_start = std::round((overlap_x_start - x2_start) / resolution);// (0 - -1) / 0.2 = 5
+      int tensor2_x_end = std::round((overlap_x_end - x2_start) / resolution);
+      int tensor2_y_start = std::round((overlap_y_start - y2_start) / resolution);
+      int tensor2_y_end = std::round((overlap_y_end - y2_start) / resolution);
+      // std::cout << "tensor2 indices: [" << tensor2_x_start << ", " << tensor2_x_end << "], ["
+      //           << tensor2_y_start << ", " << tensor2_y_end << "]" << std::endl;
+
+      // 返回切片对象
+      return {torch::indexing::Slice(tensor1_x_start, tensor1_x_end + 1),
+              torch::indexing::Slice(tensor1_y_start, tensor1_y_end + 1),
+              torch::indexing::Slice(tensor2_x_start, tensor2_x_end + 1),
+              torch::indexing::Slice(tensor2_y_start, tensor2_y_end + 1)};
+    }
+
+  public://membership variable
+
+  private://membership variable
+    int capacity_;
+    torch::Tensor yawTensor_;  
+    torch::DeviceType device_;
+    torch::Dtype dtype_;
+    std::deque<MapInfo> data_;
+};
+
+void testLocalTensorBufferFuseThroughSTBGKI(){
+  auto device_ = torch::kCUDA;
+  auto dtype_ = torch::kFloat32;
+
+  auto yaw_31x1 = (torch::arange(-15, 16).to(dtype_) * res_yaw).unsqueeze(1);
+  std::cout << "yaw_31x1.sizes(): " << yaw_31x1.sizes() << std::endl;
+  // std::cout << "yaw_31x1: \n" << yaw_31x1 << std::endl; // [-3.0 ~ +3.0]
+
+  auto gridPosTensor2se2tTensor = [&yaw_31x1, &device_, &dtype_](const torch::Tensor& gridPos, const float& timestamp) -> torch::Tensor{
+    //! yaw_31x37x36x1
+    auto yaw_31x37x36x1 = yaw_31x1.unsqueeze(1).unsqueeze(1).expand({-1, gridPos.size(0), gridPos.size(1), -1}).to(dtype_).to(device_);
+    // std::cout << "yaw_31x37x36x1.sizes(): " << yaw_31x37x36x1.sizes() << std::endl;
+    
+    //! gridPos_31x37x36x2
+    auto gridPos_31x37x36x2 = gridPos.unsqueeze(0).expand({yaw_31x1.size(0), -1, -1, -1}).to(dtype_).to(device_);
+    // std::cout << "gridPos_31x37x36x2.sizes(): " << gridPos_31x37x36x2.sizes() << std::endl;
+    
+    //! timestamp_31x37x36x1
+    auto timestamp_31x37x36x1 = torch::ones({yaw_31x1.size(0), gridPos.size(0), gridPos.size(1), 1}).to(dtype_).to(device_) * timestamp;
+    // std::cout << "timestamp_31x37x36x1.sizes(): " << timestamp_31x37x36x1.sizes() << std::endl;
+
+    //! cat yaw, gridPos, timestamp
+    auto se2Info_31x37x36x4 = torch::cat({yaw_31x37x36x1, gridPos_31x37x36x2, timestamp_31x37x36x1}, 3).to(dtype_).to(device_);
+    // std::cout << "se2Info_31x37x36x4.sizes(): " << se2Info_31x37x36x4.sizes() << std::endl;
+
+    return se2Info_31x37x36x4;
+  };
+  
+  std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {0.1, 0.0}};
+  std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0};
+
+  LocalTensorBuffer buffer(3, yaw_31x1);
+
+
+  for(auto & start : starts){
+    static int count = -1;
+    count++;
+    auto gridPos = generateGridTensor(37, 36, res_xy, start); // 31 x 37 x 36 x 2
+    auto se2Info = count * torch::ones({31, 37, 36, 4}).to(device_).to(dtype_);// 31 x 37 x 36 x 4, nx ny nz trav  
+
+    buffer.insert(se2Info, gridPos, timestamps[count]);
+
+    
+
+    // std::cout << "==========se2Info new frame" << std::endl;
+    // std::cout << "INPUT: se2info.sizes(): " << se2Info.sizes() << " gridPos.sizes():" << gridPos.sizes() << std::endl; 
+    // std::cout << "INPUT: se2info.abs().sum(): " << se2Info.abs().sum() << std::endl;
+    // std::cout << "INPUT: gridPos.abs().sum(): " << gridPos.abs().sum() << std::endl;
+  }
+}
+
+
+
+
 
 int main() {
   //! PART: 0 test
@@ -1194,29 +1429,10 @@ int main() {
   std::cout << "\n==========PART23: LocalTensorBuffer==========\n";
   testLocalTensorBuffer();
 
+  //! PART: 24 LocalTensorBuffer fuse through STBGKI
+  std::cout << "\n==========PART24: LocalTensorBuffer fuse through STBGKI==========1\n";
+  testLocalTensorBufferFuseThroughSTBGKI();
 
   
-  torch::Tensor yaws_31x1 = torch::arange(0, 31).view({31,1});
-  std::cout << "yaws_31x1.sizes()" << yaws_31x1.sizes() << std::endl;
-
-  std::cout << "yaws_31x1[0]" << yaws_31x1[0] << std::endl;
-
-  auto yaws_31x37x36x1 = yaws_31x1.unsqueeze(1).unsqueeze(1).expand({-1, 37, 36, -1});
-
-  std::cout << "yaws_31x37x36x1.sizes()" << yaws_31x37x36x1.sizes() << std::endl;
-  std::cout << "yaws_31x37x36x1[1].abs().sum()" << yaws_31x37x36x1[1].abs().sum() << std::endl;
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-
   return 0;
 }
