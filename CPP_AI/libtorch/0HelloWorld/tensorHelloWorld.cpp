@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-03 14:04:29
+ * @LastEditTime: 2025-05-06 08:59:10
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1112,47 +1112,102 @@ class LocalTensorBuffer{
         return {torch::Tensor(), torch::Tensor()};
       }
 
+      //! parameters
+      int windows_dimyaw = 5;
+      int windows_dimxy = 9;
+      int64_t pad_dimxy = (windows_dimxy - 1)/2;
+      int64_t pad_dimyaw = (windows_dimyaw - 1)/2;
+      torch::Tensor offset = torch::ones({2}).to(dtype_).to(device_) * res_xy * pad_dimxy;
+      // std::cout << "!!!!! offset: " << offset << std::endl;
+      
+      auto options_pad_se2Info = torch::nn::functional::PadFuncOptions({0, 0, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimyaw, pad_dimyaw})
+        .mode(torch::kConstant)  // 使用常数填充模式
+        .value(0);               // 填充值为0
+      // std::cout << "!!!!!!!!!!" << std::endl;
       //! extract the overlap region se2TimeY([]) and se2TimeX([])
       std::vector<torch::Tensor> se2TimeY, se2TimeX;
+      auto new_se2Info_padded = torch::nn::functional::pad(new_se2Info, options_pad_se2Info);
+      // Extract the right pad_dimyaw region from the original tensor
+      auto padded_size_dim0 = new_se2Info_padded.size(0);
+      torch::Tensor yaw_right_region = new_se2Info_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0:31:33
+      torch::Tensor yaw_left_region = new_se2Info_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0:2:3
+      new_se2Info_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
+      new_se2Info_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
+      se2TimeY.push_back(new_se2Info_padded.unsqueeze(0));
+
+      //NOTE: for-each history data
+      std::cout << "\n----------------------------------------" << "for-each history data" << "----------------------------------------" << std::endl;
       for(auto data : data_){
+        static int count = -1;
+        count++;
+        std::cout << "==========count index: " << count << std::endl;
         //! overlap region extraction
+        std::pair<int, int> shape1 = {new_gridPos.size(0) + 2 * pad_dimxy, new_gridPos.size(1) + 2 * pad_dimxy};
+        std::pair<int, int> shape2 = {data.gridPos.size(0) + 2 * pad_dimxy, data.gridPos.size(1) + 2 * pad_dimxy};
+        // std::cout << "shape1: " << shape1 << std::endl;
+        // std::cout << "shape2: " << shape2 << std::endl;
+        // std::cout << "new_gridPos[0][0]: \n" << new_gridPos[0][0] << std::endl;
+        // std::cout << "new_gridPos[0][0] - offset: \n" << new_gridPos[0][0] - offset << std::endl;
+        // std::cout << "data.gridPos[0][0]: \n" << data.gridPos[0][0] << std::endl;
+        // std::cout << "data.gridPos[0][0] - offset: \n" << data.gridPos[0][0] - offset << std::endl;
         auto [new_sx, new_sy, old_sx, old_sy] = 
-          getOverlapRegion2D(new_gridPos[0][0], new_gridPos.sizes(), data.gridPos[0][0], data.gridPos.sizes(), res_xy);
-        
+          getOverlapRegion2D(new_gridPos[0][0] - offset, shape1, data.gridPos[0][0] - offset, shape2, res_xy);
+          // getOverlapRegion2D(new_gridPos[0][0], new_gridPos.sizes(), data.gridPos[0][0], data.gridPos.sizes(), res_xy);
+        // std::cout << "!!!!!overlap over!!!!!!!!!" << std::endl;
+        // std::cout << "new_sx: " << new_sx << std::endl;
+        // std::cout << "new_sy: " << new_sy << std::endl;
+        // std::cout << "old_sx: " << old_sx << std::endl;
+        // std::cout << "old_sy: " << old_sy << std::endl;
+
         //! se2TimeY
-        auto old_se2Info_extraced = torch::zeros_like(new_se2Info);//31x37x36x4
-        old_se2Info_extraced.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, data.se2Info.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()}));
-        // std::cout << "old_se2Info_extraced.sizes(): " << old_se2Info_extraced.sizes() << std::endl;
+        auto old_se2Info_extraced = torch::zeros_like(new_se2Info_padded);//[35, 45, 44, 4]
+        auto old_se2Info_padded = torch::nn::functional::pad(data.se2Info, options_pad_se2Info);
+        // Extract the right pad_dimyaw region from the original tensor
+        auto padded_size_dim0 = old_se2Info_padded.size(0);
+        torch::Tensor yaw_right_region = old_se2Info_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0:31:33
+        torch::Tensor yaw_left_region = old_se2Info_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0:2:3
+        old_se2Info_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
+        old_se2Info_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
+        old_se2Info_extraced.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, old_se2Info_padded.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()}));
+        std::cout << "old_se2Info_extraced.sizes(): " << old_se2Info_extraced.sizes() << std::endl;
         se2TimeY.push_back(old_se2Info_extraced.unsqueeze(0));
 
-        //! se2TimeX  
-        auto yaw_expand = yawTensor_.unsqueeze(1).unsqueeze(1).expand({-1, new_gridPos.size(0), new_gridPos.size(1), -1}).to(dtype_).to(device_);//31x37x36x1
-        auto gridPos_expand = new_gridPos.unsqueeze(0).expand({yawTensor_.size(0), -1, -1, -1}).to(dtype_).to(device_);//31x37x36x2
-        auto timestamp_expand = torch::ones({yawTensor_.size(0), new_gridPos.size(0), new_gridPos.size(1), 1}).to(dtype_).to(device_) * new_timestamp;//31x37x36x1
-        auto se2TimeX_temp = torch::cat({yaw_expand, gridPos_expand, timestamp_expand}, 3).to(dtype_).to(device_);//31x37x36x4
-        se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
-
-        //! cat yaw, gridPos, timestamp
-        // auto se2Info_31x37x36x4 = torch::cat({yaw_31x37x36x1, gridPos_31x37x36x2, timestamp_31x37x36x1}, 3).to(dtype_).to(device_);
-        // std::cout << "se2Info_31x37x36x4.sizes(): " << se2Info_31x37x36x4.sizes() << std::endl;
-
-        
-        
-
-
-        //! debug  
-        auto new_gridPos_overlap = new_gridPos.index({new_sx, new_sy});
-        auto old_gridPos_overlap = data.gridPos.index({old_sx, old_sy});
-        auto temp_sub = new_gridPos_overlap - old_gridPos_overlap;
-        std::cout << "overlap diff: " << temp_sub.abs().sum() << std::endl;
+        // //! se2TimeX  
+        // auto yaw_expand = yawTensor_.unsqueeze(1).unsqueeze(1).expand({-1, new_gridPos.size(0), new_gridPos.size(1), -1}).to(dtype_).to(device_);//31x37x36x1
+        // auto gridPos_expand = new_gridPos.unsqueeze(0).expand({yawTensor_.size(0), -1, -1, -1}).to(dtype_).to(device_);//31x37x36x2
+        // auto timestamp_expand = torch::ones({yawTensor_.size(0), new_gridPos.size(0), new_gridPos.size(1), 1}).to(dtype_).to(device_) * new_timestamp;//31x37x36x1
+        // auto se2TimeX_temp = torch::cat({yaw_expand, gridPos_expand, timestamp_expand}, 3).to(dtype_).to(device_);//31x37x36x4
+        // std::cout << "se2TimeX_temp.sizes(): " << se2TimeX_temp.sizes() << std::endl;
+        // se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
       }
-
+      std::cout << "\n----------------------------------------" << "Begin to cat data" << "----------------------------------------" << std::endl;
       //! cat data  
-      auto se2TimeY_cated = torch::cat(se2TimeY, 0);
-      auto se2TimeX_cated = torch::cat(se2TimeX, 0);
-      std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
-      std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
+      auto se2TimeY_cated = torch::cat(se2TimeY, 0);//3x31x37x36x4, where 3 is the timestamp frame
+      // auto se2TimeX_cated = torch::cat(se2TimeX, 0);//3x31x37x36x4
+      // std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
+      // std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
 
+      //！ unfold
+      // auto se2TimeX_unfolded = se2TimeX_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
+      // std::cout << "se2TimeX_unfolded.sizes(): " << se2TimeX_unfolded.sizes() << std::endl;
+      auto se2TimeY_unfolded = se2TimeY_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
+      // std::cout << "se2TimeY_unfolded.sizes(): " << se2TimeY_unfolded.sizes() << std::endl;
+
+      //! permute 
+      // auto se2TimeX_unfolded_permute = se2TimeX_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
+      // std::cout << "se2TimeX_unfolded_permute.sizes(): " << se2TimeX_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
+      auto se2TimeY_unfolded_permute = se2TimeY_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
+      // std::cout << "se2TimeY_unfolded_permute.sizes(): " << se2TimeY_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
+
+      //! reshape 
+      // auto shapeX = se2TimeX_unfolded_permute.sizes();
+      // auto se2TimeX_unfolded_permute_reshaped = se2TimeX_unfolded_permute.reshape({shapeX[0], shapeX[1], shapeX[2], -1, shapeX[7]});//[27, 29, 28, 1215, 4]
+      // std::cout << "se2TimeX_unfolded_permute_reshaped.sizes(): " << se2TimeX_unfolded_permute_reshaped.sizes() << std::endl;
+      auto shapeY = se2TimeY_unfolded_permute.sizes();
+      auto se2TimeY_unfolded_permute_reshaped = se2TimeY_unfolded_permute.reshape({shapeY[0], shapeY[1], shapeY[2], -1, shapeY[7]});//[27, 29, 28, 1215, 4]
+      std::cout << "se2TimeY_unfolded_permute_reshaped.sizes(): " << se2TimeY_unfolded_permute_reshaped.sizes() << std::endl;
+      
+      
       return {torch::Tensor(), torch::Tensor()};
     }
   private://membership function
@@ -1161,19 +1216,28 @@ class LocalTensorBuffer{
      * @attention: start1, start2: [x, y]  shape1, shape2: [h, w]. the must be 2D type
      * @return {*}
      */  
+    // std::tuple<torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice> 
+    // getOverlapRegion2D(const torch::Tensor& start1, const torch::IntArrayRef& shape1, 
+    //                   const torch::Tensor& start2, const torch::IntArrayRef& shape2, double resolution) {
+    //   // 计算两个张量在 x 和 y 方向上的重叠区域
+    //   double x1_start = start1[0].item<double>();
+    //   double x1_end = x1_start + (shape1[0] - 1) * resolution;
+    //   double y1_start = start1[1].item<double>();
+    //   double y1_end = y1_start + (shape1[1] - 1) * resolution;
+
+  
     std::tuple<torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice> 
-    getOverlapRegion2D(const torch::Tensor& start1, const torch::IntArrayRef& shape1, 
-                      const torch::Tensor& start2, const torch::IntArrayRef& shape2, double resolution) {
+    getOverlapRegion2D(const torch::Tensor& start1, const std::pair<int, int>& shape1, 
+                      const torch::Tensor& start2, const std::pair<int, int>& shape2, double resolution) {
       // 计算两个张量在 x 和 y 方向上的重叠区域
       double x1_start = start1[0].item<double>();
-      double x1_end = x1_start + (shape1[0] - 1) * resolution;
+      double x1_end = x1_start + (shape1.first - 1) * resolution;
       double y1_start = start1[1].item<double>();
-      double y1_end = y1_start + (shape1[1] - 1) * resolution;
-
+      double y1_end = y1_start + (shape1.second - 1) * resolution;
       double x2_start = start2[0].item<double>();
-      double x2_end = x2_start + (shape2[0] - 1) * resolution;
+      double x2_end = x2_start + (shape2.first - 1) * resolution;
       double y2_start = start2[1].item<double>();
-      double y2_end = y2_start + (shape2[1] - 1) * resolution;
+      double y2_end = y2_start + (shape2.second - 1) * resolution;
 
       // 计算重叠区域的边界
       double overlap_x_start = std::max(x1_start, x2_start); // 0 
@@ -1226,26 +1290,6 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   std::cout << "yaw_31x1.sizes(): " << yaw_31x1.sizes() << std::endl;
   // std::cout << "yaw_31x1: \n" << yaw_31x1 << std::endl; // [-3.0 ~ +3.0]
 
-  auto gridPosTensor2se2tTensor = [&yaw_31x1, &device_, &dtype_](const torch::Tensor& gridPos, const float& timestamp) -> torch::Tensor{
-    //! yaw_31x37x36x1
-    auto yaw_31x37x36x1 = yaw_31x1.unsqueeze(1).unsqueeze(1).expand({-1, gridPos.size(0), gridPos.size(1), -1}).to(dtype_).to(device_);
-    // std::cout << "yaw_31x37x36x1.sizes(): " << yaw_31x37x36x1.sizes() << std::endl;
-    
-    //! gridPos_31x37x36x2
-    auto gridPos_31x37x36x2 = gridPos.unsqueeze(0).expand({yaw_31x1.size(0), -1, -1, -1}).to(dtype_).to(device_);
-    // std::cout << "gridPos_31x37x36x2.sizes(): " << gridPos_31x37x36x2.sizes() << std::endl;
-    
-    //! timestamp_31x37x36x1
-    auto timestamp_31x37x36x1 = torch::ones({yaw_31x1.size(0), gridPos.size(0), gridPos.size(1), 1}).to(dtype_).to(device_) * timestamp;
-    // std::cout << "timestamp_31x37x36x1.sizes(): " << timestamp_31x37x36x1.sizes() << std::endl;
-
-    //! cat yaw, gridPos, timestamp
-    auto se2Info_31x37x36x4 = torch::cat({yaw_31x37x36x1, gridPos_31x37x36x2, timestamp_31x37x36x1}, 3).to(dtype_).to(device_);
-    // std::cout << "se2Info_31x37x36x4.sizes(): " << se2Info_31x37x36x4.sizes() << std::endl;
-
-    return se2Info_31x37x36x4;
-  };
-  
   std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {0.1, 0.0}};
   std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0};
 
@@ -1256,17 +1300,76 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
     static int count = -1;
     count++;
     auto gridPos = generateGridTensor(37, 36, res_xy, start); // 31 x 37 x 36 x 2
-    auto se2Info = count * torch::ones({31, 37, 36, 4}).to(device_).to(dtype_);// 31 x 37 x 36 x 4, nx ny nz trav  
-
-    buffer.insert(se2Info, gridPos, timestamps[count]);
-
+    std::cout << "gridPos[0][0]: \n" << gridPos[0][0] << std::endl;
+    std::cout << "gridPos[36][35]: \n" << gridPos[36][35] << std::endl;
     
+    auto se2Info = count * torch::ones({31, 37, 36, 4}).to(device_).to(dtype_);// 31 x 37 x 36 x 4, nx ny nz trav  
+    buffer.insert(se2Info, gridPos, timestamps[count]);
 
     // std::cout << "==========se2Info new frame" << std::endl;
     // std::cout << "INPUT: se2info.sizes(): " << se2Info.sizes() << " gridPos.sizes():" << gridPos.sizes() << std::endl; 
     // std::cout << "INPUT: se2info.abs().sum(): " << se2Info.abs().sum() << std::endl;
     // std::cout << "INPUT: gridPos.abs().sum(): " << gridPos.abs().sum() << std::endl;
   }
+
+
+
+  /********* test */
+  std::cout << "\n=========== TEST REGION ============" << std::endl;
+  
+  //! origin tensor
+  auto small_tensor = torch::rand({31, 37, 36, 4}).to(device_).to(dtype_);
+
+  //! padding options
+  int windows_dimyaw = 5;
+  int windows_dimxy = 9;
+  int64_t pad_dimxy = (windows_dimxy - 1)/2;
+  int64_t pad_dimyaw = (windows_dimyaw - 1)/2;
+  auto options = torch::nn::functional::PadFuncOptions({0, 0, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimyaw, pad_dimyaw})
+    .mode(torch::kConstant)  // 使用常数填充模式
+    .value(0);               // 填充值为0
+
+  //! padding
+  torch::Tensor small_tensor_padded = torch::nn::functional::pad(small_tensor, options);
+  std::cout << "small_tensor_padded.sizes(): " << small_tensor_padded.sizes() << std::endl;
+  /*
+  dim0 31 -> orig0 + 2 * dim0 | 31 + 2 * 2 = 35 
+  dim1 37 -> orig1 + 2 * dim1 | 37 + 2 * 4 = 45
+  dim2 36 -> orig2 + 2 * dim2 | 36 + 2 * 4 = 44
+  dim3 04 -> orig3 + 2 * dim3 | 04 + 2 * 0 = 04
+  */
+
+  //! yaw loop setting  
+  // Extract the right pad_dimyaw region from the original tensor and reverse it
+  auto padded_size_dim0 = small_tensor_padded.size(0);
+  torch::Tensor yaw_right_region = small_tensor_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0:31:33
+  torch::Tensor yaw_left_region = small_tensor_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0:2:3
+  std::cout << "right_region.sizes(): " << yaw_right_region.sizes() << std::endl;
+  std::cout << "left_region.sizes(): " << yaw_left_region.sizes() << std::endl;
+  small_tensor_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
+  small_tensor_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
+
+
+
+  //! debug OK OK
+  auto dim_test = 1;
+  auto test1 = small_tensor_padded[dim_test].slice(0, pad_dimxy, small_tensor_padded[dim_test].size(0) - pad_dimxy).slice(1, pad_dimxy, small_tensor_padded[dim_test].size(1) - pad_dimxy);
+  std::cout << "test1.sizes(): " << test1.sizes() << std::endl;
+  auto test2 = small_tensor[small_tensor.size(0)-pad_dimyaw+dim_test];;
+  std::cout << "test2.sizes(): " << test2.sizes() << std::endl;
+  std::cout << "test1 - test2: " << (test1 - test2).abs().sum() << std::endl;
+
+
+  
+
+  
+
+
+
+
+  
+
+  
 }
 
 
