@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-06 08:59:10
+ * @LastEditTime: 2025-05-06 15:29:27
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1143,7 +1143,8 @@ class LocalTensorBuffer{
         std::cout << "==========count index: " << count << std::endl;
         //! overlap region extraction
         std::pair<int, int> shape1 = {new_gridPos.size(0) + 2 * pad_dimxy, new_gridPos.size(1) + 2 * pad_dimxy};
-        std::pair<int, int> shape2 = {data.gridPos.size(0) + 2 * pad_dimxy, data.gridPos.size(1) + 2 * pad_dimxy};
+        // std::pair<int, int> shape2 = {data.gridPos.size(0) + 2 * pad_dimxy, data.gridPos.size(1) + 2 * pad_dimxy};//DEBUG:
+        std::pair<int, int> shape2 = {data.gridPos.size(0), data.gridPos.size(1)};//
         // std::cout << "shape1: " << shape1 << std::endl;
         // std::cout << "shape2: " << shape2 << std::endl;
         // std::cout << "new_gridPos[0][0]: \n" << new_gridPos[0][0] << std::endl;
@@ -1151,27 +1152,46 @@ class LocalTensorBuffer{
         // std::cout << "data.gridPos[0][0]: \n" << data.gridPos[0][0] << std::endl;
         // std::cout << "data.gridPos[0][0] - offset: \n" << data.gridPos[0][0] - offset << std::endl;
         auto [new_sx, new_sy, old_sx, old_sy] = 
-          getOverlapRegion2D(new_gridPos[0][0] - offset, shape1, data.gridPos[0][0] - offset, shape2, res_xy);
+          // getOverlapRegion2D(new_gridPos[0][0] - offset, shape1, data.gridPos[0][0] - offset, shape2, res_xy);//DEBUG:1
+          //这里只是将最新的数据进行padding扩大范围，然后历史数据就不padding了，这样对标最新数据即可
+          getOverlapRegion2D(new_gridPos[0][0] - offset, shape1, data.gridPos[0][0], shape2, res_xy);
           // getOverlapRegion2D(new_gridPos[0][0], new_gridPos.sizes(), data.gridPos[0][0], data.gridPos.sizes(), res_xy);
         // std::cout << "!!!!!overlap over!!!!!!!!!" << std::endl;
         // std::cout << "new_sx: " << new_sx << std::endl;
         // std::cout << "new_sy: " << new_sy << std::endl;
         // std::cout << "old_sx: " << old_sx << std::endl;
         // std::cout << "old_sy: " << old_sy << std::endl;
+        // std::cout << "data.gridPos[15][14]: " << data.gridPos[15][14] << std::endl;
+        // std::cout << "data.gridPos[36][35]: " << data.gridPos[36][35] << std::endl;
+        auto overlap = data.gridPos.index({old_sx,old_sy, torch::indexing::Slice()});
+        std::cout << "overlap[0][0]: \n" << overlap[0][0] << std::endl;
+        std::cout << "overlap[overlap.size(0)-1][overlap.size(1)-1]: \n" << overlap[overlap.size(0)-1][overlap.size(1)-1] << std::endl;
+      
 
         //! se2TimeY
-        auto old_se2Info_extraced = torch::zeros_like(new_se2Info_padded);//[35, 45, 44, 4]
-        auto old_se2Info_padded = torch::nn::functional::pad(data.se2Info, options_pad_se2Info);
-        // Extract the right pad_dimyaw region from the original tensor
-        auto padded_size_dim0 = old_se2Info_padded.size(0);
-        torch::Tensor yaw_right_region = old_se2Info_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0:31:33
-        torch::Tensor yaw_left_region = old_se2Info_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0:2:3
-        old_se2Info_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
-        old_se2Info_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
-        old_se2Info_extraced.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, old_se2Info_padded.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()}));
-        std::cout << "old_se2Info_extraced.sizes(): " << old_se2Info_extraced.sizes() << std::endl;
-        se2TimeY.push_back(old_se2Info_extraced.unsqueeze(0));
+        auto se2TimeY_temp = torch::zeros_like(new_se2Info_padded);//zeros!! [35, 45, 44, 4]
+        std::cout << "se2TimeY_temp.sizes(): " << se2TimeY_temp.sizes() << std::endl;
+        auto overlap_extracted = data.se2Info.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()});//[31, 23, 22, 4]
+        std::cout << "overlap_extracted.sizes(): " << overlap_extracted.sizes() << std::endl;
+        auto options_pad_yaw = torch::nn::functional::PadFuncOptions({0, 0, 0, 0, 0, 0, pad_dimyaw, pad_dimyaw})
+          .mode(torch::kConstant)  // 使用常数填充模式
+          .value(0);               // 填充值为0
+        auto overlap_extracted_padded = torch::nn::functional::pad(overlap_extracted, options_pad_yaw);
+        std::cout << "overlap_extracted_padded.sizes(): " << overlap_extracted_padded.sizes() << std::endl;
+        
+        auto padded_size_dim0 = overlap_extracted_padded.size(0);
+        torch::Tensor yaw_right_region = overlap_extracted_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0-31:33
+        torch::Tensor yaw_left_region = overlap_extracted_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0-2:3
+        overlap_extracted_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
+        overlap_extracted_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
+        auto temp_print = overlap_extracted_padded.slice(0, 0, 2) - overlap_extracted.slice(0, 29, 31);
+        std::cout << "temp_print.abs().sum(): " << temp_print.abs().sum() << std::endl;
+        se2TimeY_temp.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, overlap_extracted_padded);
 
+        std::cout << "se2TimeY_temp.abs().sum(): " << se2TimeY_temp.abs().sum() << std::endl;
+        std::cout << "overlap_extracted_padded.abs().sum(): " << overlap_extracted_padded.abs().sum() << std::endl;
+        se2TimeY.push_back(se2TimeY_temp.unsqueeze(0));
+        
         // //! se2TimeX  
         // auto yaw_expand = yawTensor_.unsqueeze(1).unsqueeze(1).expand({-1, new_gridPos.size(0), new_gridPos.size(1), -1}).to(dtype_).to(device_);//31x37x36x1
         // auto gridPos_expand = new_gridPos.unsqueeze(0).expand({yawTensor_.size(0), -1, -1, -1}).to(dtype_).to(device_);//31x37x36x2
@@ -1246,8 +1266,8 @@ class LocalTensorBuffer{
       double overlap_y_end = std::min(y1_end, y2_end);       // 0.8
 
       // 打印重叠区域
-      // std::cout << "Overlap Region: [" << overlap_x_start << ", " << overlap_x_end << "], ["
-      //           << overlap_y_start << ", " << overlap_y_end << "]" << std::endl;
+      std::cout << "Overlap Region[x_start, x_end], [y_start, y_end]: [" << overlap_x_start << ", " << overlap_x_end << "], ["
+                << overlap_y_start << ", " << overlap_y_end << "]" << std::endl;
 
       // 计算重叠区域在 tensor1 中的索引范围
       int tensor1_x_start = std::round((overlap_x_start - x1_start) / resolution);
