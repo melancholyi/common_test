@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-06 15:29:27
+ * @LastEditTime: 2025-05-07 14:35:43
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1123,10 +1123,35 @@ class LocalTensorBuffer{
       auto options_pad_se2Info = torch::nn::functional::PadFuncOptions({0, 0, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimyaw, pad_dimyaw})
         .mode(torch::kConstant)  // 使用常数填充模式
         .value(0);               // 填充值为0
+      
+      auto options_pad_yaw = torch::nn::functional::PadFuncOptions({0, 0, 0, 0, 0, 0, pad_dimyaw, pad_dimyaw})
+        .mode(torch::kConstant)  // 使用常数填充模式
+        .value(0);               // 填充值为0
+
+      
+      // auto options_pad_se2X = torch::nn::functional::PadFuncOptions({0, 0, 0, 0, 0, 0, pad_dimyaw, pad_dimyaw})
+      //   .mode(torch::kConstant)  // 使用常数填充模式
+      //   .value(1e5);               // 填充值为1e5
+      
+
+      // yaw single, yaw_tensor_padded shape:[35, 1]
+      auto options_pad_yaw1Dim = torch::nn::functional::PadFuncOptions({0, 0, pad_dimyaw, pad_dimyaw})
+        .mode(torch::kConstant)  // 使用常数填充模式
+        .value(0);               // 填充值为0
+      auto yaw_tensor_padded = torch::nn::functional::pad(yawTensor_, options_pad_yaw1Dim);
+      std::cout << "yaw_tensor_padded.sizes(): " << yaw_tensor_padded.sizes() << std::endl;
+      auto padded_size_dim02 = yaw_tensor_padded.size(0);
+      torch::Tensor yaw_right_region_2 = yaw_tensor_padded.slice(0, padded_size_dim02 - 2*pad_dimyaw, padded_size_dim02 - pad_dimyaw);//0-31:33
+      torch::Tensor yaw_left_region_2 = yaw_tensor_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0-2:3
+      yaw_tensor_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region_2);
+      yaw_tensor_padded.slice(0, padded_size_dim02 - pad_dimyaw, padded_size_dim02).copy_(yaw_left_region_2);
+      std::cout << "yaw_tensor_padded: \n" << yaw_tensor_padded << std::endl;
+
+
       // std::cout << "!!!!!!!!!!" << std::endl;
       //! extract the overlap region se2TimeY([]) and se2TimeX([])
-      std::vector<torch::Tensor> se2TimeY, se2TimeX;
-      auto new_se2Info_padded = torch::nn::functional::pad(new_se2Info, options_pad_se2Info);
+      std::vector<torch::Tensor> se2TimeY, se2TimeX, se2TimeMask;
+      auto new_se2Info_padded = torch::nn::functional::pad(new_se2Info, options_pad_se2Info);//[35, 37, 36, 4]
       // Extract the right pad_dimyaw region from the original tensor
       auto padded_size_dim0 = new_se2Info_padded.size(0);
       torch::Tensor yaw_right_region = new_se2Info_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0:31:33
@@ -1157,77 +1182,133 @@ class LocalTensorBuffer{
           getOverlapRegion2D(new_gridPos[0][0] - offset, shape1, data.gridPos[0][0], shape2, res_xy);
           // getOverlapRegion2D(new_gridPos[0][0], new_gridPos.sizes(), data.gridPos[0][0], data.gridPos.sizes(), res_xy);
         // std::cout << "!!!!!overlap over!!!!!!!!!" << std::endl;
-        // std::cout << "new_sx: " << new_sx << std::endl;
-        // std::cout << "new_sy: " << new_sy << std::endl;
-        // std::cout << "old_sx: " << old_sx << std::endl;
-        // std::cout << "old_sy: " << old_sy << std::endl;
+        std::cout << "new_sx: " << new_sx << std::endl;
+        std::cout << "new_sy: " << new_sy << std::endl;
+        std::cout << "old_sx: " << old_sx << std::endl;
+        std::cout << "old_sy: " << old_sy << std::endl;
         // std::cout << "data.gridPos[15][14]: " << data.gridPos[15][14] << std::endl;
         // std::cout << "data.gridPos[36][35]: " << data.gridPos[36][35] << std::endl;
-        auto overlap = data.gridPos.index({old_sx,old_sy, torch::indexing::Slice()});
-        std::cout << "overlap[0][0]: \n" << overlap[0][0] << std::endl;
-        std::cout << "overlap[overlap.size(0)-1][overlap.size(1)-1]: \n" << overlap[overlap.size(0)-1][overlap.size(1)-1] << std::endl;
+        // auto overlap = data.gridPos.index({old_sx,old_sy, torch::indexing::Slice()});
+        // std::cout << "overlap[0][0]: \n" << overlap[0][0] << std::endl;
+        // std::cout << "overlap[overlap.size(0)-1][overlap.size(1)-1]: \n" << overlap[overlap.size(0)-1][overlap.size(1)-1] << std::endl;
       
 
         //! se2TimeY
         auto se2TimeY_temp = torch::zeros_like(new_se2Info_padded);//zeros!! [35, 45, 44, 4]
         std::cout << "se2TimeY_temp.sizes(): " << se2TimeY_temp.sizes() << std::endl;
-        auto overlap_extracted = data.se2Info.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()});//[31, 23, 22, 4]
-        std::cout << "overlap_extracted.sizes(): " << overlap_extracted.sizes() << std::endl;
-        auto options_pad_yaw = torch::nn::functional::PadFuncOptions({0, 0, 0, 0, 0, 0, pad_dimyaw, pad_dimyaw})
-          .mode(torch::kConstant)  // 使用常数填充模式
-          .value(0);               // 填充值为0
-        auto overlap_extracted_padded = torch::nn::functional::pad(overlap_extracted, options_pad_yaw);
-        std::cout << "overlap_extracted_padded.sizes(): " << overlap_extracted_padded.sizes() << std::endl;
+        // 提取的历史数据的重叠区域
+        auto overlap_se2Info = data.se2Info.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()});//[31, 23, 22, 4]
+        std::cout << "overlap_se2Info.sizes(): " << overlap_se2Info.sizes() << std::endl;
         
-        auto padded_size_dim0 = overlap_extracted_padded.size(0);
-        torch::Tensor yaw_right_region = overlap_extracted_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0-31:33
-        torch::Tensor yaw_left_region = overlap_extracted_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0-2:3
-        overlap_extracted_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
-        overlap_extracted_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
-        auto temp_print = overlap_extracted_padded.slice(0, 0, 2) - overlap_extracted.slice(0, 29, 31);
+        // 填充提取出来的数据的yaw部分
+        auto overlap_se2Info_padded = torch::nn::functional::pad(overlap_se2Info, options_pad_yaw);
+        std::cout << "overlap_se2Info_padded.sizes(): " << overlap_se2Info_padded.sizes() << std::endl;
+        
+        // 循环填充，左右新空白部分填充为原始数据的右边和左边的值
+        auto padded_size_dim0 = overlap_se2Info_padded.size(0);
+        torch::Tensor yaw_right_region = overlap_se2Info_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0-31:33
+        torch::Tensor yaw_left_region = overlap_se2Info_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0-2:3
+        overlap_se2Info_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
+        overlap_se2Info_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
+        auto temp_print = overlap_se2Info_padded.slice(0, 0, 2) - overlap_se2Info.slice(0, 29, 31);
         std::cout << "temp_print.abs().sum(): " << temp_print.abs().sum() << std::endl;
-        se2TimeY_temp.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, overlap_extracted_padded);
 
+        // 赋值历史数据至新的数据（形状相同但均为0数据）
+        se2TimeY_temp.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, overlap_se2Info_padded);
+
+        // 验证
+        std::cout << "overlap_se2Info_padded.abs().sum(): " << overlap_se2Info_padded.abs().sum() << std::endl;
         std::cout << "se2TimeY_temp.abs().sum(): " << se2TimeY_temp.abs().sum() << std::endl;
-        std::cout << "overlap_extracted_padded.abs().sum(): " << overlap_extracted_padded.abs().sum() << std::endl;
         se2TimeY.push_back(se2TimeY_temp.unsqueeze(0));
+
+        //! se2TimeX
+        auto se2TimeX_temp = torch::ones_like(new_se2Info_padded)*1e5;//1e5!! [35, 45, 44, 4]
+        std::cout << "se2TimeX_temp.sizes(): " << se2TimeX_temp.sizes() << std::endl;
+
+        // grid pos [35, 23, 22, 2]
+        auto overlap_grid = data.gridPos.index({old_sx,old_sy, torch::indexing::Slice()});//size [old_sx, old_sy, 2]
+        std::cout << "overlap_grid.sizes(): " << overlap_grid.sizes() << std::endl;
+        auto overlap_grid_expand = overlap_grid.unsqueeze(0).expand({yaw_tensor_padded.size(0), -1, -1, -1}).to(dtype_).to(device_);//[35, old_sx, old_sy, 2]
+        std::cout << "overlap_grid_expand.sizes(): " << overlap_grid_expand.sizes() << std::endl;
+
+        // yaw-[35, 23, 22, 1]
+        std::cout << "yaw_tensor_padded.sizes(): " << yaw_tensor_padded.sizes() << std::endl;//shape [35, 1]
+        auto yaw_tensor_expand = yaw_tensor_padded.unsqueeze(1).unsqueeze(1).expand({-1, overlap_grid.size(0), overlap_grid.size(1), -1}).to(dtype_).to(device_);
+        std::cout << "yaw_tensor_expand.sizes(): " << yaw_tensor_expand.sizes() << std::endl;
+
+        // time-[35, 23, 22, 1]
+        auto timestamp_expand = torch::ones({yaw_tensor_padded.size(0), overlap_grid.size(0), overlap_grid.size(1), 1}).to(dtype_).to(device_) * data.timestamp;
+        std::cout << "timestamp_expand.sizes(): " << timestamp_expand.sizes() << std::endl;
+        //BUG: attention this order this grid yaw and timestamp [35, 23, 22, 4]
+        auto overlap_se2Time_catted = torch::cat({timestamp_expand, yaw_tensor_expand, overlap_grid_expand}, 3).to(dtype_).to(device_);
+        std::cout << "overlap_se2Time_catted.sizes(): " << overlap_se2Time_catted.sizes() << std::endl;
+        se2TimeX_temp.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, overlap_se2Time_catted);
+        std::cout << "se2TimeX_temp.sizes(): " << se2TimeX_temp.sizes() << std::endl;
+        // std::cout << "se2TimeX_temp[0] " << se2TimeX_temp[0] << std::endl;
+        se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
+
+        std::cout << "==========Test yaw" << std::endl;
+        std::cout << "se2TimeX_temp[0][0][0]: " << se2TimeX_temp[0][0][0] << std::endl;
+        std::cout << "se2TimeX_temp[1][0][0]: " << se2TimeX_temp[1][0][0] << std::endl;
+        std::cout << "se2TimeX_temp[2][0][0]: " << se2TimeX_temp[2][0][0] << std::endl;
+        std::cout << "se2TimeX_temp[3][0][0]: " << se2TimeX_temp[3][0][0] << std::endl;
         
-        // //! se2TimeX  
-        // auto yaw_expand = yawTensor_.unsqueeze(1).unsqueeze(1).expand({-1, new_gridPos.size(0), new_gridPos.size(1), -1}).to(dtype_).to(device_);//31x37x36x1
-        // auto gridPos_expand = new_gridPos.unsqueeze(0).expand({yawTensor_.size(0), -1, -1, -1}).to(dtype_).to(device_);//31x37x36x2
-        // auto timestamp_expand = torch::ones({yawTensor_.size(0), new_gridPos.size(0), new_gridPos.size(1), 1}).to(dtype_).to(device_) * new_timestamp;//31x37x36x1
-        // auto se2TimeX_temp = torch::cat({yaw_expand, gridPos_expand, timestamp_expand}, 3).to(dtype_).to(device_);//31x37x36x4
-        // std::cout << "se2TimeX_temp.sizes(): " << se2TimeX_temp.sizes() << std::endl;
-        // se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
+        std::cout << "se2TimeX_temp[31][0][0]: " << se2TimeX_temp[31][0][0] << std::endl;
+        std::cout << "se2TimeX_temp[32][0][0]: " << se2TimeX_temp[32][0][0] << std::endl;
+        std::cout << "se2TimeX_temp[33][0][0]: " << se2TimeX_temp[33][0][0] << std::endl;
+        std::cout << "se2TimeX_temp[34][0][0]: " << se2TimeX_temp[34][0][0] << std::endl;
+        
+
+        std::cout << "==========Test pos" << std::endl;
+        std::cout << "se2TimeX_temp[0][0][0]: " << se2TimeX_temp[0][0][0] << std::endl;
+        std::cout << "se2TimeX_temp[1][0][1]: " << se2TimeX_temp[1][0][1] << std::endl;
+        std::cout << "se2TimeX_temp[2][1][0]: " << se2TimeX_temp[2][1][0] << std::endl;
+        std::cout << "se2TimeX_temp[3][1][1]: " << se2TimeX_temp[3][1][1] << std::endl;
+
+        exit(0);
       }
       std::cout << "\n----------------------------------------" << "Begin to cat data" << "----------------------------------------" << std::endl;
-      //! cat data  
+      //===== se2TimeY handle
+      std::cout << "==========se2TimeX handle" << std::endl;
+      // cat data  
       auto se2TimeY_cated = torch::cat(se2TimeY, 0);//3x31x37x36x4, where 3 is the timestamp frame
-      // auto se2TimeX_cated = torch::cat(se2TimeX, 0);//3x31x37x36x4
-      // std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
-      // std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
+      std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
 
-      //！ unfold
-      // auto se2TimeX_unfolded = se2TimeX_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
-      // std::cout << "se2TimeX_unfolded.sizes(): " << se2TimeX_unfolded.sizes() << std::endl;
+      // unfold
       auto se2TimeY_unfolded = se2TimeY_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
-      // std::cout << "se2TimeY_unfolded.sizes(): " << se2TimeY_unfolded.sizes() << std::endl;
+      std::cout << "se2TimeY_unfolded.sizes(): " << se2TimeY_unfolded.sizes() << std::endl;
 
-      //! permute 
-      // auto se2TimeX_unfolded_permute = se2TimeX_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
-      // std::cout << "se2TimeX_unfolded_permute.sizes(): " << se2TimeX_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
+      // permute 
       auto se2TimeY_unfolded_permute = se2TimeY_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
-      // std::cout << "se2TimeY_unfolded_permute.sizes(): " << se2TimeY_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
+      std::cout << "se2TimeY_unfolded_permute.sizes(): " << se2TimeY_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
 
-      //! reshape 
-      // auto shapeX = se2TimeX_unfolded_permute.sizes();
-      // auto se2TimeX_unfolded_permute_reshaped = se2TimeX_unfolded_permute.reshape({shapeX[0], shapeX[1], shapeX[2], -1, shapeX[7]});//[27, 29, 28, 1215, 4]
-      // std::cout << "se2TimeX_unfolded_permute_reshaped.sizes(): " << se2TimeX_unfolded_permute_reshaped.sizes() << std::endl;
+      // reshape 
       auto shapeY = se2TimeY_unfolded_permute.sizes();
       auto se2TimeY_unfolded_permute_reshaped = se2TimeY_unfolded_permute.reshape({shapeY[0], shapeY[1], shapeY[2], -1, shapeY[7]});//[27, 29, 28, 1215, 4]
       std::cout << "se2TimeY_unfolded_permute_reshaped.sizes(): " << se2TimeY_unfolded_permute_reshaped.sizes() << std::endl;
       
+      //===== se2TimeX handle
+      std::cout << "==========se2TimeX handle" << std::endl;
+      // cat
+      auto se2TimeX_cated = torch::cat(se2TimeX, 0);//3x31x37x36x4
+      std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
+
+      // unfold
+      auto se2TimeX_unfolded = se2TimeX_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
+      std::cout << "se2TimeX_unfolded.sizes(): " << se2TimeX_unfolded.sizes() << std::endl;
       
+      // permute
+      auto se2TimeX_unfolded_permute = se2TimeX_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
+      std::cout << "se2TimeX_unfolded_permute.sizes(): " << se2TimeX_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
+
+      // reshaped
+      auto shapeX = se2TimeX_unfolded_permute.sizes();
+      auto se2TimeX_unfolded_permute_reshaped = se2TimeX_unfolded_permute.reshape({shapeX[0], shapeX[1], shapeX[2], -1, shapeX[7]});//[27, 29, 28, 1215, 4]
+      std::cout << "se2TimeX_unfolded_permute_reshaped.sizes(): " << se2TimeX_unfolded_permute_reshaped.sizes() << std::endl;
+
+  
+
+
       return {torch::Tensor(), torch::Tensor()};
     }
   private://membership function
@@ -1378,6 +1459,22 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   auto test2 = small_tensor[small_tensor.size(0)-pad_dimyaw+dim_test];;
   std::cout << "test2.sizes(): " << test2.sizes() << std::endl;
   std::cout << "test1 - test2: " << (test1 - test2).abs().sum() << std::endl;
+
+  //！ mask test
+  auto value = torch::rand({3, 4}).to(device_).to(dtype_);
+  auto mask = torch::rand({3, 4}).to(device_).to(dtype_) > 0.5;
+  mask.to(torch::kBool);
+  std::cout << "value: \n" << value << std::endl;
+  std::cout << "mask: \n" << mask << std::endl;
+  
+
+  auto selected_value = value * mask;
+  std::cout << "selected_value.sizes(): " << selected_value.sizes() << std::endl;
+  std::cout << "selected_value: \n" << selected_value << std::endl;
+
+
+
+  
 
 
   
