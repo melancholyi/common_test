@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-07 14:35:43
+ * @LastEditTime: 2025-05-08 07:39:02
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1133,6 +1133,8 @@ class LocalTensorBuffer{
       //   .mode(torch::kConstant)  // 使用常数填充模式
       //   .value(1e5);               // 填充值为1e5
       
+      auto new_se2Info_padded = torch::nn::functional::pad(new_se2Info, options_pad_se2Info);//[35, 45, 44, 4]
+      std::cout << "new_se2Info_padded.sizes(): " << new_se2Info_padded.sizes() << std::endl;
 
       // yaw single, yaw_tensor_padded shape:[35, 1]
       auto options_pad_yaw1Dim = torch::nn::functional::PadFuncOptions({0, 0, pad_dimyaw, pad_dimyaw})
@@ -1147,18 +1149,8 @@ class LocalTensorBuffer{
       yaw_tensor_padded.slice(0, padded_size_dim02 - pad_dimyaw, padded_size_dim02).copy_(yaw_left_region_2);
       std::cout << "yaw_tensor_padded: \n" << yaw_tensor_padded << std::endl;
 
-
-      // std::cout << "!!!!!!!!!!" << std::endl;
       //! extract the overlap region se2TimeY([]) and se2TimeX([])
       std::vector<torch::Tensor> se2TimeY, se2TimeX, se2TimeMask;
-      auto new_se2Info_padded = torch::nn::functional::pad(new_se2Info, options_pad_se2Info);//[35, 37, 36, 4]
-      // Extract the right pad_dimyaw region from the original tensor
-      auto padded_size_dim0 = new_se2Info_padded.size(0);
-      torch::Tensor yaw_right_region = new_se2Info_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0:31:33
-      torch::Tensor yaw_left_region = new_se2Info_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0:2:3
-      new_se2Info_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
-      new_se2Info_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
-      se2TimeY.push_back(new_se2Info_padded.unsqueeze(0));
 
       //NOTE: for-each history data
       std::cout << "\n----------------------------------------" << "for-each history data" << "----------------------------------------" << std::endl;
@@ -1247,26 +1239,102 @@ class LocalTensorBuffer{
         // std::cout << "se2TimeX_temp[0] " << se2TimeX_temp[0] << std::endl;
         se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
 
-        std::cout << "==========Test yaw" << std::endl;
-        std::cout << "se2TimeX_temp[0][0][0]: " << se2TimeX_temp[0][0][0] << std::endl;
-        std::cout << "se2TimeX_temp[1][0][0]: " << se2TimeX_temp[1][0][0] << std::endl;
-        std::cout << "se2TimeX_temp[2][0][0]: " << se2TimeX_temp[2][0][0] << std::endl;
-        std::cout << "se2TimeX_temp[3][0][0]: " << se2TimeX_temp[3][0][0] << std::endl;
+        // std::cout << "==========Test yaw" << std::endl;
+        // std::cout << "se2TimeX_temp[0][0][0]: " << se2TimeX_temp[0][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[1][0][0]: " << se2TimeX_temp[1][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[2][0][0]: " << se2TimeX_temp[2][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[3][0][0]: " << se2TimeX_temp[3][0][0] << std::endl;
         
-        std::cout << "se2TimeX_temp[31][0][0]: " << se2TimeX_temp[31][0][0] << std::endl;
-        std::cout << "se2TimeX_temp[32][0][0]: " << se2TimeX_temp[32][0][0] << std::endl;
-        std::cout << "se2TimeX_temp[33][0][0]: " << se2TimeX_temp[33][0][0] << std::endl;
-        std::cout << "se2TimeX_temp[34][0][0]: " << se2TimeX_temp[34][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[31][0][0]: " << se2TimeX_temp[31][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[32][0][0]: " << se2TimeX_temp[32][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[33][0][0]: " << se2TimeX_temp[33][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[34][0][0]: " << se2TimeX_temp[34][0][0] << std::endl;
         
 
-        std::cout << "==========Test pos" << std::endl;
-        std::cout << "se2TimeX_temp[0][0][0]: " << se2TimeX_temp[0][0][0] << std::endl;
-        std::cout << "se2TimeX_temp[1][0][1]: " << se2TimeX_temp[1][0][1] << std::endl;
-        std::cout << "se2TimeX_temp[2][1][0]: " << se2TimeX_temp[2][1][0] << std::endl;
-        std::cout << "se2TimeX_temp[3][1][1]: " << se2TimeX_temp[3][1][1] << std::endl;
+        // std::cout << "==========Test pos" << std::endl;
+        // std::cout << "se2TimeX_temp[0][0][0]: " << se2TimeX_temp[0][0][0] << std::endl;
+        // std::cout << "se2TimeX_temp[1][0][1]: " << se2TimeX_temp[1][0][1] << std::endl;
+        // std::cout << "se2TimeX_temp[2][1][0]: " << se2TimeX_temp[2][1][0] << std::endl;
+        // std::cout << "se2TimeX_temp[3][1][1]: " << se2TimeX_temp[3][1][1] << std::endl;
 
-        exit(0);
+        // std::cout << "----------" << std::endl;
+
+        // std::cout << "se2TimeX_temp[0][20][20]: " << se2TimeX_temp[0][20][20] << std::endl;
+        // std::cout << "se2TimeX_temp[1][20][21]: " << se2TimeX_temp[1][20][21] << std::endl;
+        // std::cout << "se2TimeX_temp[2][21][20]: " << se2TimeX_temp[2][21][20] << std::endl;
+        // std::cout << "se2TimeX_temp[0][21][21]: " << se2TimeX_temp[0][21][21] << std::endl;
+
+        // std::cout << "se2TimeX_temp[1][21][22]: " << se2TimeX_temp[1][21][22] << std::endl;
+        // std::cout << "se2TimeX_temp[2][22][21]: " << se2TimeX_temp[2][22][21] << std::endl;
+        // std::cout << "se2TimeX_temp[3][22][22]: " << se2TimeX_temp[3][22][22] << std::endl;
+
+        // exit(0);
       }
+      //! new data new_se2Info_padded
+      std::cout << "\n----------------------------------------" << "new data" << "----------------------------------------" << std::endl;
+      // Extract the right pad_dimyaw region from the original tensor
+      auto padded_size_dim0 = new_se2Info_padded.size(0);
+      torch::Tensor yaw_right_region = new_se2Info_padded.slice(0, padded_size_dim0 - 2*pad_dimyaw, padded_size_dim0 - pad_dimyaw);//0:31:33
+      torch::Tensor yaw_left_region = new_se2Info_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0:2:3
+      new_se2Info_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region);
+      new_se2Info_padded.slice(0, padded_size_dim0 - pad_dimyaw, padded_size_dim0).copy_(yaw_left_region);
+      se2TimeY.push_back(new_se2Info_padded.unsqueeze(0));
+
+      //! new data new_se2Xvalue_padded
+      auto se2TimeX_temp = torch::ones_like(new_se2Info_padded)*1e5;//1e5!! [35, 45, 44, 4]
+      std::cout << "se2TimeX_temp.sizes(): " << se2TimeX_temp.sizes() << std::endl; 
+
+      //yaw_expand: [35, 37, 36, 1]
+      auto yaw_tensor_expand = yaw_tensor_padded.unsqueeze(1).unsqueeze(1).expand({-1, new_se2Info.size(1), new_se2Info.size(2), -1}).to(dtype_).to(device_);
+      std::cout << "yaw_tensor_expand.sizes(): " << yaw_tensor_expand.sizes() << std::endl;
+      
+      //timestamp_expand: [35, 37, 36, 1]
+      auto timestamp_expand = torch::ones({yaw_tensor_expand.size(0), new_se2Info.size(1), new_se2Info.size(2), 1}).to(dtype_).to(device_) * new_timestamp;
+      std::cout << "timestamp_expand.sizes(): " << timestamp_expand.sizes() << std::endl;
+      
+      //gridPos_expand: [35, 37, 36, 2]
+      auto new_gridPos_expand = new_gridPos.unsqueeze(0).expand({yaw_tensor_padded.size(0), -1, -1, -1}).to(dtype_).to(device_);
+      std::cout << "new_gridPos_expand.sizes(): " << new_gridPos_expand.sizes() << std::endl;
+
+      auto overlap_se2Time_catted = torch::cat({timestamp_expand, yaw_tensor_expand, new_gridPos_expand}, 3).to(dtype_).to(device_);
+      std::cout << "overlap_se2Time_catted.sizes(): " << overlap_se2Time_catted.sizes() << std::endl;
+
+      auto new_sx2 = torch::indexing::Slice(pad_dimxy, new_se2Info_padded.size(1)-pad_dimxy);
+      auto new_sy2 = torch::indexing::Slice(pad_dimxy, new_se2Info_padded.size(2)-pad_dimxy);
+      std::cout << "new_sx2: " << new_sx2 << std::endl;
+      std::cout << "new_sy2: " << new_sy2 << std::endl;
+      
+      se2TimeX_temp.index_put_({torch::indexing::Slice(), new_sx2, new_sy2, torch::indexing::Slice()}, overlap_se2Time_catted);
+      std::cout << "se2TimeX_temp.sizes(): " << se2TimeX_temp.sizes() << std::endl;
+      // std::cout << "se2TimeX_temp[0] " << se2TimeX_temp[0] << std::endl;
+      se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
+
+      {
+        std::cout << "==========print se2TimeX_temp test. left-forward-region" << std::endl;
+        std::vector<int> xrange = {0, 10};
+        std::vector<int> yrange = {0, 10};
+        for(int i = xrange[0]; i < xrange[1]; i++){
+          for(int j = yrange[0]; j < yrange[1]; j++){
+            std::cout << "index-(" << i << "," << j << "): " << se2TimeX_temp[0][i][j].unsqueeze(0) << std::endl ;
+          }
+          std::cout << std::endl << std::endl;
+        }
+      }
+      
+      {
+        std::cout << "==========print se2TimeX_temp test. right-backward-region" << std::endl;
+        std::vector<int> xrange = {35, 45};
+        std::vector<int> yrange = {34, 44};
+        for(int i = xrange[0]; i < xrange[1]; i++){
+          for(int j = yrange[0]; j < yrange[1]; j++){
+            std::cout << "index-(" << i << "," << j << "): " << se2TimeX_temp[0][i][j].unsqueeze(0) << std::endl ;
+          }
+          std::cout << std::endl << std::endl;
+        }
+      }
+
+
+      
       std::cout << "\n----------------------------------------" << "Begin to cat data" << "----------------------------------------" << std::endl;
       //===== se2TimeY handle
       std::cout << "==========se2TimeX handle" << std::endl;
