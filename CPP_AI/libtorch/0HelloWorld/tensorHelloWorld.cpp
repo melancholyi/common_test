@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-08 07:39:02
+ * @LastEditTime: 2025-05-09 15:05:20
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1309,71 +1309,126 @@ class LocalTensorBuffer{
       // std::cout << "se2TimeX_temp[0] " << se2TimeX_temp[0] << std::endl;
       se2TimeX.push_back(se2TimeX_temp.unsqueeze(0));
 
-      {
-        std::cout << "==========print se2TimeX_temp test. left-forward-region" << std::endl;
-        std::vector<int> xrange = {0, 10};
-        std::vector<int> yrange = {0, 10};
-        for(int i = xrange[0]; i < xrange[1]; i++){
-          for(int j = yrange[0]; j < yrange[1]; j++){
-            std::cout << "index-(" << i << "," << j << "): " << se2TimeX_temp[0][i][j].unsqueeze(0) << std::endl ;
-          }
-          std::cout << std::endl << std::endl;
-        }
-      }
-      
-      {
-        std::cout << "==========print se2TimeX_temp test. right-backward-region" << std::endl;
-        std::vector<int> xrange = {35, 45};
-        std::vector<int> yrange = {34, 44};
-        for(int i = xrange[0]; i < xrange[1]; i++){
-          for(int j = yrange[0]; j < yrange[1]; j++){
-            std::cout << "index-(" << i << "," << j << "): " << se2TimeX_temp[0][i][j].unsqueeze(0) << std::endl ;
-          }
-          std::cout << std::endl << std::endl;
-        }
-      }
+      // {
+      //   std::cout << "==========print se2TimeX_temp test. left-forward-region" << std::endl;
+      //   std::vector<int> xrange = {0, 10};
+      //   std::vector<int> yrange = {0, 10};
+      //   for(int i = xrange[0]; i < xrange[1]; i++){
+      //     for(int j = yrange[0]; j < yrange[1]; j++){
+      //       std::cout << "index-(" << i << "," << j << "): " << se2TimeX_temp[0][i][j].unsqueeze(0) << std::endl ;
+      //     }
+      //     std::cout << std::endl << std::endl;
+      //   }
+      // }
+
+      // {
+      //   std::cout << "==========print se2TimeX_temp test. right-backward-region" << std::endl;
+      //   std::vector<int> xrange = {35, 45};
+      //   std::vector<int> yrange = {34, 44};
+      //   for(int i = xrange[0]; i < xrange[1]; i++){
+      //     for(int j = yrange[0]; j < yrange[1]; j++){
+      //       std::cout << "index-(" << i << "," << j << "): " << se2TimeX_temp[0][i][j].unsqueeze(0) << std::endl ;
+      //     }
+      //     std::cout << std::endl << std::endl;
+      //   }
+      // }
 
 
       
       std::cout << "\n----------------------------------------" << "Begin to cat data" << "----------------------------------------" << std::endl;
-      //===== se2TimeY handle
-      std::cout << "==========se2TimeX handle" << std::endl;
+      //===== se2TimeY train handle
+      std::cout << "==========se2TimeY train handle" << std::endl;
       // cat data  
       auto se2TimeY_cated = torch::cat(se2TimeY, 0);//3x31x37x36x4, where 3 is the timestamp frame
-      std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
-
+      // std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
       // unfold
       auto se2TimeY_unfolded = se2TimeY_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
-      std::cout << "se2TimeY_unfolded.sizes(): " << se2TimeY_unfolded.sizes() << std::endl;
-
+      // std::cout << "se2TimeY_unfolded.sizes(): " << se2TimeY_unfolded.sizes() << std::endl;
       // permute 
       auto se2TimeY_unfolded_permute = se2TimeY_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
-      std::cout << "se2TimeY_unfolded_permute.sizes(): " << se2TimeY_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
-
+      // std::cout << "se2TimeY_unfolded_permute.sizes(): " << se2TimeY_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
       // reshape 
       auto shapeY = se2TimeY_unfolded_permute.sizes();
       auto se2TimeY_unfolded_permute_reshaped = se2TimeY_unfolded_permute.reshape({shapeY[0], shapeY[1], shapeY[2], -1, shapeY[7]});//[27, 29, 28, 1215, 4]
       std::cout << "se2TimeY_unfolded_permute_reshaped.sizes(): " << se2TimeY_unfolded_permute_reshaped.sizes() << std::endl;
       
-      //===== se2TimeX handle
-      std::cout << "==========se2TimeX handle" << std::endl;
+      //===== se2TimeX train handle
+      std::cout << "==========se2TimeX train handle" << std::endl;
       // cat
       auto se2TimeX_cated = torch::cat(se2TimeX, 0);//3x31x37x36x4
-      std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
-
+      // std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
       // unfold
       auto se2TimeX_unfolded = se2TimeX_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
-      std::cout << "se2TimeX_unfolded.sizes(): " << se2TimeX_unfolded.sizes() << std::endl;
-      
+      // std::cout << "se2TimeX_unfolded.sizes(): " << se2TimeX_unfolded.sizes() << std::endl;
       // permute
       auto se2TimeX_unfolded_permute = se2TimeX_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
-      std::cout << "se2TimeX_unfolded_permute.sizes(): " << se2TimeX_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
-
+      // std::cout << "se2TimeX_unfolded_permute.sizes(): " << se2TimeX_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
       // reshaped
       auto shapeX = se2TimeX_unfolded_permute.sizes();
       auto se2TimeX_unfolded_permute_reshaped = se2TimeX_unfolded_permute.reshape({shapeX[0], shapeX[1], shapeX[2], -1, shapeX[7]});//[27, 29, 28, 1215, 4]
       std::cout << "se2TimeX_unfolded_permute_reshaped.sizes(): " << se2TimeX_unfolded_permute_reshaped.sizes() << std::endl;
 
+      //===== se2TimeX pred handle
+      auto se2t_trainX = se2TimeX_unfolded_permute_reshaped; // [31, 37, 36, 1620, 4]
+      auto se2t_predX = new_se2Info.unsqueeze(-2); // [31, 37, 36, 4]
+      std::cout << "se2t_predX.sizes(): " << se2t_predX.sizes() << std::endl;
+
+      //=====
+      std::cout << "\n----------------------------------------" << "STBGKI-Compute Se2Dist" << "----------------------------------------" << std::endl;
+      //NOTE: parameters  
+      auto kernelScaler_ = 1.0;
+      auto klen_time = 2.0;
+      auto klen_yaw = pad_dimyaw * res_yaw;
+      auto klen_grid = pad_dimxy * res_xy;
+      std::cout << "klen_yaw: " << klen_yaw << std::endl;
+      std::cout << "klen_grid: " << klen_grid << std::endl;
+
+      // 确保输入张量形状正确
+      assert(se2t_trainX.sizes() == torch::IntArrayRef({31, 37, 36, 1620, 4}));
+      assert(se2t_predX.sizes() == torch::IntArrayRef({31, 37, 36, 1, 4}));
+
+      auto slice = torch::indexing::Slice();
+      // 定义一个lambda函数来简化索引表达式
+      auto makeSlice = [slice](int dim) {
+          return std::vector<torch::indexing::TensorIndex>{slice, slice, slice, slice, dim};
+      };
+
+      // 计算时间戳的绝对差值
+      torch::Tensor timestamp_diff = torch::abs(se2t_trainX.index(makeSlice(0)) - se2t_predX.index(makeSlice(0)));
+      std::cout << "timestamp_diff.sizes(): " << timestamp_diff.sizes() << std::endl;           
+
+      // 计算yaw的绝对差值，并规范化到[-pi, pi]
+      torch::Tensor yaw_diff = torch::abs(se2t_trainX.index(makeSlice(1)) - se2t_predX.index(makeSlice(1)));
+      // 使用公式: (diff + π) % (2π) - π 来确保差值在[-π, π]范围内
+      yaw_diff = (yaw_diff + torch::acos(torch::tensor(-1.0))) % (2 * torch::acos(torch::tensor(-1.0))) - torch::acos(torch::tensor(-1.0));
+      std::cout << "yaw_diff.sizes(): " << yaw_diff.sizes() << std::endl;
+
+      // 计算grid位置的欧几里得距离
+      // 获取gridX和gridY的差值
+      torch::Tensor gridX_diff = se2t_trainX.index(makeSlice(2)) - se2t_predX.index(makeSlice(2));
+      torch::Tensor gridY_diff = se2t_trainX.index(makeSlice(3)) - se2t_predX.index(makeSlice(3));
+      std::cout << "gridX_diff.sizes(): " << gridX_diff.sizes() << std::endl;
+      std::cout << "gridY_diff.sizes(): " << gridY_diff.sizes() << std::endl;
+
+      // 计算欧几里得距离
+      torch::Tensor grid_dist = torch::sqrt(gridX_diff.square() + gridY_diff.square());
+      std::cout << "grid_dist.sizes(): " << grid_dist.sizes() << std::endl;
+
+      // 将三个距离维度组合成最终张量 [31,37,36,1620,3]
+      torch::Tensor se2_dist = torch::cat({timestamp_diff.unsqueeze(-1)/klen_time, yaw_diff.unsqueeze(-1)/klen_yaw, grid_dist.unsqueeze(-1)/klen_grid}, /*dim=*/-1);
+      std::cout << "se2_dist.sizes(): " << se2_dist.sizes() << std::endl;
+
+      std::cout << "\n----------------------------------------" << "STBGKI-Compute covSparse" << "----------------------------------------" << std::endl;
+      const auto M2PI = 2.0 * M_PI;
+      std::cout << "M2PI: " << M2PI << std::endl;
+      auto &se2_kernel = se2_dist;
+      se2_kernel = ((2.0 + (se2_kernel * M2PI).cos()) * (1.0 - se2_kernel) / 3.0 +
+                      (se2_kernel * M2PI).sin() / M2PI) * kernelScaler_;
+    
+      // // kernel's elem is masked with 0.0 if dist > kernelLen_
+      se2_kernel = se2_kernel * (se2_kernel > 0.0).to(dtype_);
+
+      std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
   
 
 
@@ -1394,7 +1449,6 @@ class LocalTensorBuffer{
     //   double y1_start = start1[1].item<double>();
     //   double y1_end = y1_start + (shape1[1] - 1) * resolution;
 
-  
     std::tuple<torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice> 
     getOverlapRegion2D(const torch::Tensor& start1, const std::pair<int, int>& shape1, 
                       const torch::Tensor& start2, const std::pair<int, int>& shape2, double resolution) {
@@ -1541,6 +1595,31 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   std::cout << "selected_value: \n" << selected_value << std::endl;
 
 
+  //! 
+  auto se2t1 = torch::arange(0, 24).view({1, 1, 2, 3, 4});
+  // auto se2t2 = torch::arange(1, 25).view({1, 2, 3, 4});
+  auto se2t2 = torch::ones({1, 1, 2, 1, 4})*23;
+  std::cout << "se2t1: \n" << se2t1 << std::endl;
+  std::cout << "se2t2: \n" << se2t2 << std::endl;
+
+  auto slice = torch::indexing::Slice();
+  // 定义一个lambda函数来简化索引表达式
+  auto makeSlice = [slice](int dim) {
+      return std::vector<torch::indexing::TensorIndex>{slice, slice, slice, slice, dim};
+  };
+
+  auto time_diff = se2t1.index(makeSlice(0)) - se2t2.index(makeSlice(0));
+  std::cout << "time_diff:\n" << time_diff << std::endl;
+  std::cout << "time_diff/23:\n" << time_diff/23 << std::endl;
+
+  auto x_diff = se2t1.index(makeSlice(2)) - se2t2.index(makeSlice(2));
+  std::cout << "x_diff:\n" << x_diff << std::endl;
+  auto y_diff = se2t1.index(makeSlice(3)) - se2t2.index(makeSlice(3));
+  std::cout << "y_diff:\n" << y_diff << std::endl;
+  auto xy_dist = torch::sqrt(x_diff.square() + y_diff.square());
+  std::cout << "xy_dist:\n" << xy_dist << std::endl;
+
+
 
   
 
@@ -1562,164 +1641,182 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
 
 
 int main() {
-  //! PART: 0 test
-  std::cout << "Libtorch version:  " << TORCH_VERSION << std::endl;
+  // //! PART: 0 test
+  // std::cout << "Libtorch version:  " << TORCH_VERSION << std::endl;
 
-  torch::Device device(torch::kCPU);
-  if (torch::cuda::is_available()) {
-    std::cout << "=====CUDA is available! Training on GPU." << std::endl;
-    device = torch::kCUDA;
-  } else {
-    std::cout << "=====Training on CPU." << std::endl;
-  }
-
-  //! PART: 1 basic usage
-  std::cout << "\n==========basic usage==========\n";
-  // 创建一个(2,3)张量
-  torch::Tensor tensor = torch::randn({2, 3}).to(device);
-  std::cout << "=====tensor: origin tensor\n" << tensor << std::endl;
-  tensor += tensor;
-  std::cout << "=====tensor: tensor += tensor\n" << tensor << std::endl;
-  std::cout << tensor.sin() << std::endl;
-  std::cout << "\nWelcome to LibTorch!" << std::endl;
-
-
-  //! PART: 2 compareCPUAndGPU
-  std::cout << "\n==========compareCPUAndGPU==========\n";
-  // compareCPUAndGPUTest();
-
-  //! PART: 3 Eigen Decomposition
-  std::cout << "\n==========Eigen Decomposition==========\n";
-  // Eigen decomposition
-  torch::Tensor tensor1 = torch::arange(1.0, 10.0).reshape({3, 3});
-  auto eig = torch::linalg::eig(tensor1);
-  auto [eigval, eigvec] = eig;
-  std::cout << "Eigenvalues: " << eigval << std::endl;
-  std::cout << "Eigenvectors: " << eigvec << std::endl;
-
-  auto tensor1_sin = tensor1.sqrt();
-  std::cout << "tensor1_sin: " << tensor1_sin << std::endl;
-  
-  //! PART: 4 vec2tensor2EigMatrix
-  std::cout << "\n==========vec2tensor2EigMatrix==========\n";
-  vec2tensorGPU();
-
-  //! PART: 5 computeDistMat and covSparse
-  std::cout << "\n==========computeDist and covSparse==========\n";
-  computeDistAndcovSparse();
-
-
-  //! PART: 6 create 10x10 matrix3d  
-  std::cout << "\n==========create 10x10 matrix3d==========\n";
-  create10X10Cov3d();
-
-  //! PART: 7 more useful functions  
-  std::cout << "\n==========PART: 7 more useful functions==========\n";
-  moreUsefulFuncsTest();
-
-  //! PART: 8 torch::detach
-  std::cout << "\n==========torch::detach==========\n";
-  torchDetachTest();
-
-  
-  //! PART: 9 [x, y, theta, exp(-t)] 's custom distance 
-  std::cout << "\n==========[x, y, theta, exp(-t)]'s custom distance==========\n";
-  testCustomDistXYThetaT();
-
-  //! PART: 10 auto grad tensor gpu version
-  testAutoGradGPUTensor();
-
-  //! PART: 11 create kernelLen tensor
-  auto klen_tensor = generate_arithmetic_sequences({0.1, 0.2, 0.3}, {1, 1, 1}, 10);
-  std::cout << "klen_tensor.sizes()" << klen_tensor.sizes() << std::endl;
-  std::cout << "klen_tensor: \n" << klen_tensor << std::endl;
-
-  //! PART: 12 test unorder_map<int, torch::Tensor>
-  std::unordered_map<int, torch::Tensor> tensor_map;
-  for (int i = 0; i < 3; ++i) {
-    tensor_map[i] = torch::rand({3, 3}).to(device);
-  }
-  std::cout << "tensor_map[0].sizes()" << tensor_map[0].sizes() << std::endl;
-  std::cout << "tensor_map[0]: \n" << tensor_map[0] << std::endl;
-  std::cout << "tensor_map[1].sizes()" << tensor_map[1].sizes() << std::endl;
-  std::cout << "tensor_map[1]: \n" << tensor_map[1] << std::endl;
-
-  //! PART: 13 change dim  
-  std::cout << "\n==========PART13: change dim==========\n";
-  meanVec2TensorAndChangeDim();
-
-
-  //! PART: 14 unsqueeze and view
-  std::cout << "\n==========PART14: unsqueeze and view==========\n";
-  unsqueezeTest();
-
-  //! PART: 15 stack tensor
-  std::cout << "\n==========PART15: stack tensor==========\n";
-  stackTensors();
-
-  //! PART: 16 batch eigen-Decomposition
-  std::cout << "\n==========PART16: batch eigen-Decomposition==========\n";
-  batchMatrixEigenDecomposition();
-  // batchMatrixEigenDecomposition2();
-
-  //！ PART: 17 batch select min eval and correspending-evec
-  std::cout << "\n==========PART17: batch select min eval and correspending-evec==========\n";
-  selectMinEigenvalAndEigenVec();
-
-
-  //! PART: 18 mask tensor
-  std::cout << "\n==========PART18: mask tensor==========\n";
-  maskTensorTest();
-
-  
-  // torch::Tensor tensor1_part18 = torch::rand({41292, 4}).to(device);
-  // torch::Tensor tensor2_part18 = torch::rand({41292, 4}).to(device);
-  // torch::Tensor tensor12_cdist = torch::cdist(tensor1_part18, tensor2_part18, 2);
-  // std::cout << "tensor12_cdist.size(): " << tensor12_cdist.sizes() << std::endl;
-
-  //! PART: 19 tensor padding
-  std::cout << "\n==========PART19: tensor padding==========\n";
-  tensorPadding();
-
-  //! PART: 20 se2 Tensor unfold
-  std::cout << "\n==========PART20: se2 Tensor unfold==========\n";
-  se2TensorUnfold();
-
-  
-  // {
-  //   // 创建 tensor1 和 tensor2
-  //   torch::Tensor tensor1 = torch::arange(0, 24).reshape({2, 3, 4});
-  //   std::cout << "tensor1: \n" << tensor1 << std::endl;
-
-  //   torch::Tensor tensor2 = torch::arange(1000, 1004).reshape({1, 4});
-  //   std::cout << "tensor2: \n" << tensor2 << std::endl;
-
-  //   // 创建一个全零张量，形状为 [2, 1, 4]（假设我们要填充到第二维度的第4个位置）
-  //   torch::Tensor zero_tensor = torch::zeros({2, 1, 4}, tensor1.options());
-  //   // 将 tensor2 的数据填充到全零张量的指定位置（例如第二维度的第4个位置）
-  //   zero_tensor.index_put_({torch::indexing::Slice(), 3, torch::indexing::Slice()}, tensor2);
-
-  //   // 将填充好的全零张量与 tensor1 拼接
-  //   torch::Tensor result = torch::cat({tensor1, zero_tensor.unsqueeze(1)}, 1);
-  //   std::cout << "Resulting tensor: \n" << result << std::endl;
-
+  // torch::Device device(torch::kCPU);
+  // if (torch::cuda::is_available()) {
+  //   std::cout << "=====CUDA is available! Training on GPU." << std::endl;
+  //   device = torch::kCUDA;
+  // } else {
+  //   std::cout << "=====Training on CPU." << std::endl;
   // }
+
+  // //! PART: 1 basic usage
+  // std::cout << "\n==========basic usage==========\n";
+  // // 创建一个(2,3)张量
+  // torch::Tensor tensor = torch::randn({2, 3}).to(device);
+  // std::cout << "=====tensor: origin tensor\n" << tensor << std::endl;
+  // tensor += tensor;
+  // std::cout << "=====tensor: tensor += tensor\n" << tensor << std::endl;
+  // std::cout << tensor.sin() << std::endl;
+  // std::cout << "\nWelcome to LibTorch!" << std::endl;
+
+
+  // //! PART: 2 compareCPUAndGPU
+  // std::cout << "\n==========compareCPUAndGPU==========\n";
+  // // compareCPUAndGPUTest();
+
+  // //! PART: 3 Eigen Decomposition
+  // std::cout << "\n==========Eigen Decomposition==========\n";
+  // // Eigen decomposition
+  // torch::Tensor tensor1 = torch::arange(1.0, 10.0).reshape({3, 3});
+  // auto eig = torch::linalg::eig(tensor1);
+  // auto [eigval, eigvec] = eig;
+  // std::cout << "Eigenvalues: " << eigval << std::endl;
+  // std::cout << "Eigenvectors: " << eigvec << std::endl;
+
+  // auto tensor1_sin = tensor1.sqrt();
+  // std::cout << "tensor1_sin: " << tensor1_sin << std::endl;
   
-  //! PART: 21 tensor slice and assign
-  std::cout << "\n==========PART21: tensor slice and assign==========\n";
-  tensorSliceAndAssign();
+  // //! PART: 4 vec2tensor2EigMatrix
+  // std::cout << "\n==========vec2tensor2EigMatrix==========\n";
+  // vec2tensorGPU();
 
-  //! PART: 22 FixedTensorBuffer
-  std::cout << "\n==========PART22: FixedTensorBuffer==========\n";
-  testFixedTensorBuffer();
+  // //! PART: 5 computeDistMat and covSparse
+  // std::cout << "\n==========computeDist and covSparse==========\n";
+  // computeDistAndcovSparse();
 
-  //! PART: 23 LocalTensorBuffer
-  std::cout << "\n==========PART23: LocalTensorBuffer==========\n";
-  testLocalTensorBuffer();
 
-  //! PART: 24 LocalTensorBuffer fuse through STBGKI
-  std::cout << "\n==========PART24: LocalTensorBuffer fuse through STBGKI==========1\n";
-  testLocalTensorBufferFuseThroughSTBGKI();
+  // //! PART: 6 create 10x10 matrix3d  
+  // std::cout << "\n==========create 10x10 matrix3d==========\n";
+  // create10X10Cov3d();
+
+  // //! PART: 7 more useful functions  
+  // std::cout << "\n==========PART: 7 more useful functions==========\n";
+  // moreUsefulFuncsTest();
+
+  // //! PART: 8 torch::detach
+  // std::cout << "\n==========torch::detach==========\n";
+  // torchDetachTest();
+
+  
+  // //! PART: 9 [x, y, theta, exp(-t)] 's custom distance 
+  // std::cout << "\n==========[x, y, theta, exp(-t)]'s custom distance==========\n";
+  // testCustomDistXYThetaT();
+
+  // //! PART: 10 auto grad tensor gpu version
+  // testAutoGradGPUTensor();
+
+  // //! PART: 11 create kernelLen tensor
+  // auto klen_tensor = generate_arithmetic_sequences({0.1, 0.2, 0.3}, {1, 1, 1}, 10);
+  // std::cout << "klen_tensor.sizes()" << klen_tensor.sizes() << std::endl;
+  // std::cout << "klen_tensor: \n" << klen_tensor << std::endl;
+
+  // //! PART: 12 test unorder_map<int, torch::Tensor>
+  // std::unordered_map<int, torch::Tensor> tensor_map;
+  // for (int i = 0; i < 3; ++i) {
+  //   tensor_map[i] = torch::rand({3, 3}).to(device);
+  // }
+  // std::cout << "tensor_map[0].sizes()" << tensor_map[0].sizes() << std::endl;
+  // std::cout << "tensor_map[0]: \n" << tensor_map[0] << std::endl;
+  // std::cout << "tensor_map[1].sizes()" << tensor_map[1].sizes() << std::endl;
+  // std::cout << "tensor_map[1]: \n" << tensor_map[1] << std::endl;
+
+  // //! PART: 13 change dim  
+  // std::cout << "\n==========PART13: change dim==========\n";
+  // meanVec2TensorAndChangeDim();
+
+
+  // //! PART: 14 unsqueeze and view
+  // std::cout << "\n==========PART14: unsqueeze and view==========\n";
+  // unsqueezeTest();
+
+  // //! PART: 15 stack tensor
+  // std::cout << "\n==========PART15: stack tensor==========\n";
+  // stackTensors();
+
+  // //! PART: 16 batch eigen-Decomposition
+  // std::cout << "\n==========PART16: batch eigen-Decomposition==========\n";
+  // batchMatrixEigenDecomposition();
+  // // batchMatrixEigenDecomposition2();
+
+  // //！ PART: 17 batch select min eval and correspending-evec
+  // std::cout << "\n==========PART17: batch select min eval and correspending-evec==========\n";
+  // selectMinEigenvalAndEigenVec();
+
+
+  // //! PART: 18 mask tensor
+  // std::cout << "\n==========PART18: mask tensor==========\n";
+  // maskTensorTest();
+
+  
+  // // torch::Tensor tensor1_part18 = torch::rand({41292, 4}).to(device);
+  // // torch::Tensor tensor2_part18 = torch::rand({41292, 4}).to(device);
+  // // torch::Tensor tensor12_cdist = torch::cdist(tensor1_part18, tensor2_part18, 2);
+  // // std::cout << "tensor12_cdist.size(): " << tensor12_cdist.sizes() << std::endl;
+
+  // //! PART: 19 tensor padding
+  // std::cout << "\n==========PART19: tensor padding==========\n";
+  // tensorPadding();
+
+  // //! PART: 20 se2 Tensor unfold
+  // std::cout << "\n==========PART20: se2 Tensor unfold==========\n";
+  // se2TensorUnfold();
+
+  
+  // // {
+  // //   // 创建 tensor1 和 tensor2
+  // //   torch::Tensor tensor1 = torch::arange(0, 24).reshape({2, 3, 4});
+  // //   std::cout << "tensor1: \n" << tensor1 << std::endl;
+
+  // //   torch::Tensor tensor2 = torch::arange(1000, 1004).reshape({1, 4});
+  // //   std::cout << "tensor2: \n" << tensor2 << std::endl;
+
+  // //   // 创建一个全零张量，形状为 [2, 1, 4]（假设我们要填充到第二维度的第4个位置）
+  // //   torch::Tensor zero_tensor = torch::zeros({2, 1, 4}, tensor1.options());
+  // //   // 将 tensor2 的数据填充到全零张量的指定位置（例如第二维度的第4个位置）
+  // //   zero_tensor.index_put_({torch::indexing::Slice(), 3, torch::indexing::Slice()}, tensor2);
+
+  // //   // 将填充好的全零张量与 tensor1 拼接
+  // //   torch::Tensor result = torch::cat({tensor1, zero_tensor.unsqueeze(1)}, 1);
+  // //   std::cout << "Resulting tensor: \n" << result << std::endl;
+
+  // // }
+  
+  // //! PART: 21 tensor slice and assign
+  // std::cout << "\n==========PART21: tensor slice and assign==========\n";
+  // tensorSliceAndAssign();
+
+  // //! PART: 22 FixedTensorBuffer
+  // std::cout << "\n==========PART22: FixedTensorBuffer==========\n";
+  // testFixedTensorBuffer();
+
+  // //! PART: 23 LocalTensorBuffer
+  // std::cout << "\n==========PART23: LocalTensorBuffer==========\n";
+  // testLocalTensorBuffer();
+
+  // //! PART: 24 LocalTensorBuffer fuse through STBGKI
+  // std::cout << "\n==========PART24: LocalTensorBuffer fuse through STBGKI==========1\n";
+  // testLocalTensorBufferFuseThroughSTBGKI();
+
+
+  {
+    std::cout << "\n----------------------------------------" << "STBGKI-Compute covSparse" << "----------------------------------------" << std::endl;
+    const auto M2PI = 2.0 * M_PI;
+    auto kernelScaler_ = 1.0;
+    std::cout << "M2PI: " << M2PI << std::endl;
+    auto se2_dist = torch::zeros({31, 37, 36, 12, 3}).to(torch::kCUDA);
+    auto &se2_kernel = se2_dist;
+    se2_kernel = ((2.0 + (se2_kernel * M2PI).cos()) * (1.0 - se2_kernel) / 3.0 +
+                    (se2_kernel * M2PI).sin() / M2PI) * kernelScaler_;
+
+    // // kernel's elem is masked with 0.0 if dist > kernelLen_
+    se2_kernel = se2_kernel * (se2_kernel > 0.0).to(torch::kFloat32);
+
+    std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
+    std::cout << "se2_kernel.abs().sum(): " << se2_kernel.abs().sum() << std::endl;
+  }
 
   
   return 0;
