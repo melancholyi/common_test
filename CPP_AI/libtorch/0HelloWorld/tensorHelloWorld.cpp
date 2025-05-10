@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-09 15:05:20
+ * @LastEditTime: 2025-05-10 15:24:51
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1055,6 +1055,21 @@ void testLocalTensorBuffer(){
 
 
 //////////////////////////////////////////////PART: 24 LocalTensorBuffer //////////////////////////////////////
+void print_cuda_memory_info(const char* step) {
+    size_t freeBytes, totalBytes;
+    cudaError_t err = cudaMemGetInfo(&freeBytes, &totalBytes);
+    if (err != cudaSuccess) {
+        std::cerr << "cudaMemGetInfo failed: " << cudaGetErrorString(err) << std::endl;
+        return;
+    }
+
+    float freeGB = freeBytes / 1073741824.0;
+    float totalGB = totalBytes / 1073741824.0;
+    float usedGB = totalGB - freeGB;
+
+    std::cout << step << " - CUDA Memory Usage: ![" << usedGB << "]! GB used / ![" << freeGB << "]! GB free / ![" << totalGB << "]! GB total" << std::endl;
+}
+
 float res_yaw = 0.2;
 float res_xy = 0.2;
 
@@ -1334,7 +1349,8 @@ class LocalTensorBuffer{
       // }
 
 
-      
+      print_cuda_memory_info("1. After asseming data");
+      // 765.530090332MB - [31, 37, 36, 1620, 4](float)
       std::cout << "\n----------------------------------------" << "Begin to cat data" << "----------------------------------------" << std::endl;
       //===== se2TimeY train handle
       std::cout << "==========se2TimeY train handle" << std::endl;
@@ -1374,6 +1390,7 @@ class LocalTensorBuffer{
       std::cout << "se2t_predX.sizes(): " << se2t_predX.sizes() << std::endl;
 
       //=====
+      print_cuda_memory_info("2. After catting data");
       std::cout << "\n----------------------------------------" << "STBGKI-Compute Se2Dist" << "----------------------------------------" << std::endl;
       //NOTE: parameters  
       auto kernelScaler_ = 1.0;
@@ -1421,14 +1438,29 @@ class LocalTensorBuffer{
       std::cout << "\n----------------------------------------" << "STBGKI-Compute covSparse" << "----------------------------------------" << std::endl;
       const auto M2PI = 2.0 * M_PI;
       std::cout << "M2PI: " << M2PI << std::endl;
-      auto &se2_kernel = se2_dist;
-      se2_kernel = ((2.0 + (se2_kernel * M2PI).cos()) * (1.0 - se2_kernel) / 3.0 +
-                      (se2_kernel * M2PI).sin() / M2PI) * kernelScaler_;
-    
-      // // kernel's elem is masked with 0.0 if dist > kernelLen_
-      se2_kernel = se2_kernel * (se2_kernel > 0.0).to(dtype_);
+
+      print_cuda_memory_info("before compute  ");
+      
+      torch::Tensor se2_kernel;
+      {//local region, save cuda memory  
+        auto term11 = se2_dist.clone();
+        term11.mul_(M2PI).cos_().add_(2.0);
+        
+        auto term12 = se2_dist.clone();
+        term12.sub_(1.0).mul_(-0.333333);
+
+        auto term2 = se2_dist.clone();
+        term2.mul_(M2PI).sin_().div_(M2PI);
+
+        se2_kernel = term11.clone();
+        se2_kernel.mul_(term12).add_(term2);
+
+        // se2_kernel.mul_((se2_kernel > 0.0).to(torch::kFloat32));
+      }
 
       std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
+
+      print_cuda_memory_info("se2_kernel compute over");
   
 
 
@@ -1619,22 +1651,9 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   auto xy_dist = torch::sqrt(x_diff.square() + y_diff.square());
   std::cout << "xy_dist:\n" << xy_dist << std::endl;
 
-
-
-  
-
-
-  
-
-  
-
-
-
-
-  
-
-  
 }
+
+
 
 
 
@@ -1798,25 +1817,159 @@ int main() {
 
   // //! PART: 24 LocalTensorBuffer fuse through STBGKI
   // std::cout << "\n==========PART24: LocalTensorBuffer fuse through STBGKI==========1\n";
-  // testLocalTensorBufferFuseThroughSTBGKI();
+  testLocalTensorBufferFuseThroughSTBGKI();
+  // {
+  //   std::cout << "\n----------------------------------------" << "STBGKI-Compute covSparse" << "----------------------------------------" << std::endl;
+  //   const auto M2PI = 2.0 * M_PI;
+  //   auto kernelScaler_ = 1.0;
+  //   std::cout << "M2PI: " << M2PI << std::endl;
+  //   auto se2_dist = torch::zeros({31, 37, 36, 1620, 3}).to(torch::kCUDA);
+
+    
+  //   auto term11 = (2.0 + (se2_dist * M2PI).cos());
+  //   auto term12 = (1.0 - se2_dist) / 3.0;
+  //   auto term2 = (se2_dist * M2PI).sin() / M2PI;
+  //   auto se2_kernel = (term11 * term12 + term2).clone();
+  //   // kernel's elem is masked with 0.0 if dist > kernelLen_
+  //   se2_kernel = se2_kernel * (se2_kernel > 0.0).to(torch::kFloat32);
+
+  //   std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
+  //   std::cout << "se2_kernel.abs().sum(): " << se2_kernel.abs().sum() << std::endl;
+  // }
+
+  // {
+  //   std::cout << "\n----------------------------------------" << "STBGKI-Compute covSparse" << "----------------------------------------" << std::endl;
+  //   const auto M2PI = 2.0 * M_PI;
+  //   auto kernelScaler_ = 1.0;
+  //   std::cout << "M2PI: " << M2PI << std::endl;
+
+  //   // 检查初始内存使用情况
+  //   print_cuda_memory_info("1. Initial"); //1.37012 GB used
+
+  //   auto se2_dist = torch::zeros({31, 37, 36, 1620, 3}).to(torch::kCUDA); // 765.5 MB
+  //   std::cout << "se2_dist data pointer: " << se2_dist.data_ptr<float>() << std::endl;
+  //   print_cuda_memory_info("2. After creating se2_dist"); // 2.11816 GB used
+    
+  //   torch::Tensor se2_kernel;
+  //   {
+  //     auto term11 = se2_dist.clone();
+  //     term11.mul_(M2PI).cos_().add_(2.0);
+  //     std::cout << "term11.sizes(): " << term11.sizes() << std::endl;
+  //     std::cout << "term11 data pointer: " << term11.data_ptr<float>() << std::endl;
+  //     print_cuda_memory_info("3. After creating term11"); // 2.88379 GB used
+
+  //     auto term12 = se2_dist.clone();
+  //     term12.sub_(1.0).mul_(-0.333333);
+  //     std::cout << "term12.sizes(): " << term12.sizes() << std::endl;
+  //     std::cout << "term12 data pointer: " << term12.data_ptr<float>() << std::endl;
+  //     print_cuda_memory_info("4. After creating term12");
+
+  //     auto term2 = se2_dist.clone();
+  //     term2.mul_(M2PI).sin_().div_(M2PI);
+  //     std::cout << "term2.sizes(): " << term2.sizes() << std::endl;
+  //     std::cout << "term2  data pointer: " << term2.data_ptr<float>() << std::endl;
+  //     print_cuda_memory_info("5. After creating term2");
+
+  //     se2_kernel = term11.clone();
+  //     se2_kernel.mul_(term12).add_(term2);
+  //     // auto se2_kernel = term11.mul_(term12).add_(term2);
+  //     std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
+  //     std::cout << "se2_kernel  data pointer: " << se2_kernel.data_ptr<float>() << std::endl;
+  //     print_cuda_memory_info("6. After creating se2_kernel");
+
+  //     // kernel's elem is masked with 0.0 if dist > kernelLen_
+  //     se2_kernel.mul_((se2_kernel > 0.0).to(torch::kFloat32));
+
+      
+  //     // 检查内存使用情况
+  //     print_cuda_memory_info("7. After masking se2_kernel ");
+  //   }
+  //   std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
+  //   std::cout << "se2_kernel.abs().sum(): " << se2_kernel.abs().sum() << std::endl;
 
 
-  {
-    std::cout << "\n----------------------------------------" << "STBGKI-Compute covSparse" << "----------------------------------------" << std::endl;
-    const auto M2PI = 2.0 * M_PI;
-    auto kernelScaler_ = 1.0;
-    std::cout << "M2PI: " << M2PI << std::endl;
-    auto se2_dist = torch::zeros({31, 37, 36, 12, 3}).to(torch::kCUDA);
-    auto &se2_kernel = se2_dist;
-    se2_kernel = ((2.0 + (se2_kernel * M2PI).cos()) * (1.0 - se2_kernel) / 3.0 +
-                    (se2_kernel * M2PI).sin() / M2PI) * kernelScaler_;
 
-    // // kernel's elem is masked with 0.0 if dist > kernelLen_
-    se2_kernel = se2_kernel * (se2_kernel > 0.0).to(torch::kFloat32);
+  //   // //! deconstructor  
+  //   // std::cout << "\n=====Before Deconstructor" << std::endl;
+  //   // std::cout << "se2_dist.use_count(): " << se2_dist.use_count() << std::endl;
+  //   // std::cout << "term11.use_count(): " << term11.use_count() << std::endl;
+  //   // std::cout << "term12.use_count(): " << term12.use_count() << std::endl;
+  //   // std::cout << "term2.use_count(): " << term2.use_count() << std::endl;
+  //   // std::cout << "se2_kernel.use_count(): " << se2_kernel.use_count() << std::endl;
+    
+  //   // term11.reset();
+  //   // term12.reset();
+  //   // term2.reset();
 
-    std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
-    std::cout << "se2_kernel.abs().sum(): " << se2_kernel.abs().sum() << std::endl;
-  }
+  //   // std::cout << "\n=====After Deconstructor" << std::endl;
+  //   // std::cout << "term11.use_count(): " << term11.use_count() << "\tterm11.sizes():" << term11.sizes() << std::endl;
+  //   // std::cout << "term12.use_count(): " << term12.use_count() << "\tterm12.sizes():" << term12.sizes() << std::endl;
+  //   // std::cout << "term2.use_count(): " << term2.use_count() << "\tterm2.sizes():" << term2.sizes() << std::endl;
+  //   // std::cout << "se2_kernel.use_count(): " << se2_kernel.use_count() << "\tse2_kernel.sizes():" << se2_kernel.sizes() << std::endl;
+  //   // print_cuda_memory_info("8. Free term11 term12 term2");
+  // }
+  // print_cuda_memory_info("9. region over");
+
+  // auto temp1 = torch::ones({31,37,36,1620,3, 5}).to(torch::kCUDA).to(torch::kFloat32);
+  // print_cuda_memory_info("10. alloc memory 2.1GB tensor");
+
+
+  // //! 1. shadow copy  
+  // // 创建 tensor1 并初始化
+  // auto tensor1 = torch::rand({2, 3});
+  
+  // // 简单赋值（值赋值），tensor2 获取 tensor1 的拷贝
+  // auto tensor2 = tensor1; // 指针相同，修改tensor2的同时tensor1也会被修改
+  // // auto &tensor2 = tensor1; // 指针相同，修改tensor2的同时tensor1也会被修改
+  // // auto tensor2 = std::move(tensor1); // tensor1被消灭（tensor1: [ Tensor (undefined) ]），全权转移至tensor2
+  // // auto tensor2 = tensor1.clone();
+  // // auto tensor2 = tensor1.view({3,2});
+
+  // // 输出 tensor1 和 tensor2 的指针地址
+  // std::cout << "=====Origin tensor pointers" << std::endl;
+  // std::cout << "tensor1 data pointer: " << tensor1.data_ptr<float>() << std::endl;
+  // std::cout << "tensor2 data pointer: " << tensor2.data_ptr<float>() << std::endl;
+
+  // // 输出 tensor1 和 tensor2 的初始值
+  // std::cout << "=====Origin tensors" << std::endl;
+  // std::cout << "tensor1:\n" << tensor1 << std::endl;
+  // std::cout << "tensor2:\n" << tensor2 << std::endl;
+
+  // // 修改 tensor2 的值
+  // tensor2[0][0] = 5;;
+  // tensor2[1][1] = 115;;
+
+  // // 输出 tensor1 和 tensor2 的指针地址（修改后）
+  // std::cout << "=====Changed tensor pointers" << std::endl;
+  // std::cout << "tensor1 data pointer: " << tensor1.data_ptr<float>() << std::endl;
+  // std::cout << "tensor2 data pointer: " << tensor2.data_ptr<float>() << std::endl;
+
+  // // 输出 tensor1 和 tensor2 的值（修改后）
+  // std::cout << "=====Changed tensors" << std::endl;
+  // std::cout << "tensor1:\n" << tensor1 << std::endl;
+  // std::cout << "tensor2:\n" << tensor2 << std::endl;
+
+  // auto tensor1_x_MPI = tensor1 * M2PI;
+  // auto tensor1_sin = tensor1.sin();
+  // std::cout << "tensor1       data pointer: " << tensor1.data_ptr<float>() << std::endl;
+  // std::cout << "tensor1: \n" << tensor1 << std::endl;
+  // std::cout << "tensor1_x_MPI data pointer: " << tensor1_x_MPI.data_ptr<float>() << std::endl;
+  // std::cout << "tensor1_x_MPI: \n" << tensor1_x_MPI << std::endl;
+  // std::cout << "tensor1_sin   data pointer: " << tensor1_sin.data_ptr<float>() << std::endl;
+  // std::cout << "tensor1_sin: \n" << tensor1_sin << std::endl;
+
+  // // 
+  // std::cout << "=====deconstructor" << std::endl;
+  // std::cout << "=tensor1.~Tensor();" << std::endl;
+  // tensor1.~Tensor();
+  // std::cout << "tensor1:\n" << tensor1 << std::endl;
+  // std::cout << "tensor2:\n" << tensor2 << std::endl;  
+
+  // std::cout << "=tensor2.~Tensor();" << std::endl;
+  // tensor2.~Tensor();
+  // std::cout << "tensor1:\n" << tensor1 << std::endl;
+  // std::cout << "tensor2:\n" << tensor2 << std::endl;  
+
 
   
   return 0;
