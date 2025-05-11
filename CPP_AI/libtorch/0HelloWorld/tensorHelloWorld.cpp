@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-10 15:24:51
+ * @LastEditTime: 2025-05-11 10:31:54
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1067,7 +1067,7 @@ void print_cuda_memory_info(const char* step) {
     float totalGB = totalBytes / 1073741824.0;
     float usedGB = totalGB - freeGB;
 
-    std::cout << step << " - CUDA Memory Usage: ![" << usedGB << "]! GB used / ![" << freeGB << "]! GB free / ![" << totalGB << "]! GB total" << std::endl;
+    std::cout << std::endl << step << " - CUDA Memory Usage: ![" << usedGB << "]! GB used / ![" << freeGB << "]! GB free / ![" << totalGB << "]! GB total" << std::endl;
 }
 
 float res_yaw = 0.2;
@@ -1120,19 +1120,14 @@ class LocalTensorBuffer{
       }
       data_.push_back({tensor_fused, temp2, timestamp});
     }
+    void extractOverlapRegion(std::vector<torch::Tensor>& se2TimeX, std::vector<torch::Tensor>& se2TimeY, const int& windowsDimyaw, const int& windowsDimxy, const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
 
-    std::tuple<torch::Tensor, torch::Tensor> fuseThroughSpatioTemporalBGKI(const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
-      if(data_.size() < capacity_){
-        std::cout << "buffer size not enough, now: " << data_.size() << std::endl;
-        return {torch::Tensor(), torch::Tensor()};
-      }
+      int64_t pad_dimxy = (windowsDimxy - 1)/2;
+      int64_t pad_dimyaw = (windowsDimyaw - 1)/2;
 
-      //! parameters
-      int windows_dimyaw = 5;
-      int windows_dimxy = 9;
-      int64_t pad_dimxy = (windows_dimxy - 1)/2;
-      int64_t pad_dimyaw = (windows_dimyaw - 1)/2;
-      torch::Tensor offset = torch::ones({2}).to(dtype_).to(device_) * res_xy * pad_dimxy;
+
+      
+      torch::Tensor offset = torch::ones({2}).to(dtype_).to(device_) * res_xy * pad_dimxy;// ignore
       // std::cout << "!!!!! offset: " << offset << std::endl;
       
       auto options_pad_se2Info = torch::nn::functional::PadFuncOptions({0, 0, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimxy, pad_dimyaw, pad_dimyaw})
@@ -1148,7 +1143,7 @@ class LocalTensorBuffer{
       //   .mode(torch::kConstant)  // 使用常数填充模式
       //   .value(1e5);               // 填充值为1e5
       
-      auto new_se2Info_padded = torch::nn::functional::pad(new_se2Info, options_pad_se2Info);//[35, 45, 44, 4]
+      auto new_se2Info_padded = torch::nn::functional::pad(new_se2Info, options_pad_se2Info);//[35, 45, 44, 4] // TODO: 1.0574 MB
       std::cout << "new_se2Info_padded.sizes(): " << new_se2Info_padded.sizes() << std::endl;
 
       // yaw single, yaw_tensor_padded shape:[35, 1]
@@ -1158,14 +1153,14 @@ class LocalTensorBuffer{
       auto yaw_tensor_padded = torch::nn::functional::pad(yawTensor_, options_pad_yaw1Dim);
       std::cout << "yaw_tensor_padded.sizes(): " << yaw_tensor_padded.sizes() << std::endl;
       auto padded_size_dim02 = yaw_tensor_padded.size(0);
-      torch::Tensor yaw_right_region_2 = yaw_tensor_padded.slice(0, padded_size_dim02 - 2*pad_dimyaw, padded_size_dim02 - pad_dimyaw);//0-31:33
+      torch::Tensor yaw_right_region_2 = yaw_tensor_padded.slice(0, padded_size_dim02 - 2*pad_dimyaw, padded_size_dim02 - pad_dimyaw);//0-31:33 [2, 45, 44, 4]
       torch::Tensor yaw_left_region_2 = yaw_tensor_padded.slice(0, pad_dimyaw, 2*pad_dimyaw);//0-2:3
       yaw_tensor_padded.slice(0, 0, pad_dimyaw).copy_(yaw_right_region_2);
       yaw_tensor_padded.slice(0, padded_size_dim02 - pad_dimyaw, padded_size_dim02).copy_(yaw_left_region_2);
       std::cout << "yaw_tensor_padded: \n" << yaw_tensor_padded << std::endl;
 
       //! extract the overlap region se2TimeY([]) and se2TimeX([])
-      std::vector<torch::Tensor> se2TimeY, se2TimeX, se2TimeMask;
+      // std::vector<torch::Tensor> se2TimeY, se2TimeX,;
 
       //NOTE: for-each history data
       std::cout << "\n----------------------------------------" << "for-each history data" << "----------------------------------------" << std::endl;
@@ -1285,6 +1280,10 @@ class LocalTensorBuffer{
 
         // exit(0);
       }
+
+      print_cuda_memory_info("2. after for-each history data");
+      //2. after for-each history data - CUDA Memory Usage: ![1.06262]! GB used / ![6.66046]! GB free / ![7.72308]! GB total
+
       //! new data new_se2Info_padded
       std::cout << "\n----------------------------------------" << "new data" << "----------------------------------------" << std::endl;
       // Extract the right pad_dimyaw region from the original tensor
@@ -1296,18 +1295,18 @@ class LocalTensorBuffer{
       se2TimeY.push_back(new_se2Info_padded.unsqueeze(0));
 
       //! new data new_se2Xvalue_padded
-      auto se2TimeX_temp = torch::ones_like(new_se2Info_padded)*1e5;//1e5!! [35, 45, 44, 4]
+      auto se2TimeX_temp = torch::ones_like(new_se2Info_padded)*1e5;//1e5!! [35, 45, 44, 4] NOTE: 1.0574 MB
       std::cout << "se2TimeX_temp.sizes(): " << se2TimeX_temp.sizes() << std::endl; 
 
-      //yaw_expand: [35, 37, 36, 1]
+      //yaw_expand: [35, 37, 36, 1]  NOTE: 0.177841187 MB
       auto yaw_tensor_expand = yaw_tensor_padded.unsqueeze(1).unsqueeze(1).expand({-1, new_se2Info.size(1), new_se2Info.size(2), -1}).to(dtype_).to(device_);
       std::cout << "yaw_tensor_expand.sizes(): " << yaw_tensor_expand.sizes() << std::endl;
       
-      //timestamp_expand: [35, 37, 36, 1]
+      //timestamp_expand: [35, 37, 36, 1] NOTE: 0.177841187 MB
       auto timestamp_expand = torch::ones({yaw_tensor_expand.size(0), new_se2Info.size(1), new_se2Info.size(2), 1}).to(dtype_).to(device_) * new_timestamp;
       std::cout << "timestamp_expand.sizes(): " << timestamp_expand.sizes() << std::endl;
       
-      //gridPos_expand: [35, 37, 36, 2]
+      //gridPos_expand: [35, 37, 36, 2] NOTE: 0.177841187 MB
       auto new_gridPos_expand = new_gridPos.unsqueeze(0).expand({yaw_tensor_padded.size(0), -1, -1, -1}).to(dtype_).to(device_);
       std::cout << "new_gridPos_expand.sizes(): " << new_gridPos_expand.sizes() << std::endl;
 
@@ -1347,63 +1346,70 @@ class LocalTensorBuffer{
       //     std::cout << std::endl << std::endl;
       //   }
       // }
+    }
 
-
-      print_cuda_memory_info("1. After asseming data");
-      // 765.530090332MB - [31, 37, 36, 1620, 4](float)
+    std::tuple<torch::Tensor, torch::Tensor> assembleSe2tTrainData(const std::vector<torch::Tensor>& se2TimeX, const std::vector<torch::Tensor>& se2TimeY, const int& windowsDimyaw, const int& windowsDimxy){
       std::cout << "\n----------------------------------------" << "Begin to cat data" << "----------------------------------------" << std::endl;
-      //===== se2TimeY train handle
-      std::cout << "==========se2TimeY train handle" << std::endl;
+      //========== se2TimeY train handle
+      // std::cout << "\n==========se2TimeY train handle" << std::endl; //
       // cat data  
-      auto se2TimeY_cated = torch::cat(se2TimeY, 0);//3x31x37x36x4, where 3 is the timestamp frame
+      auto se2TimeY_cated = torch::cat(se2TimeY, 0);//[4, 35, 45, 44, 4] 
+      // NOTE: 1.890197754 MB data_ptr<float>(): 0x77fcf5384c00 NOTE: as the same as before
       // std::cout << "se2TimeY_cated.sizes(): " << se2TimeY_cated.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeY_cated.data_ptr<float>() << std::endl; 
+      
       // unfold
-      auto se2TimeY_unfolded = se2TimeY_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
+      auto se2TimeY_unfolded = se2TimeY_cated.unfold(1, windowsDimyaw, 1).unfold(2, windowsDimxy, 1).unfold(3, windowsDimxy, 1);//[4, 31, 37, 36, 4, 5, 9, 9] 
+      // NOTE: 406.458 MB data_ptr<float>(): 0x77fcf5384c00 NOTE: as the same as before
       // std::cout << "se2TimeY_unfolded.sizes(): " << se2TimeY_unfolded.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeY_unfolded.data_ptr<float>() << std::endl; 
+
       // permute 
-      auto se2TimeY_unfolded_permute = se2TimeY_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
-      // std::cout << "se2TimeY_unfolded_permute.sizes(): " << se2TimeY_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
+      auto se2TimeY_unfolded_permute = se2TimeY_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4}); //[31, 37, 36, 4, 5, 9, 9, 4] 
+      // NOTE: 406.458 MB data_ptr<float>(): 0x77fcf5384c00 NOTE: as the same as before
+      // std::cout << "se2TimeY_unfolded_permute.sizes(): " << se2TimeY_unfolded_permute.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeY_unfolded_permute.data_ptr<float>() << std::endl; 
+
       // reshape 
       auto shapeY = se2TimeY_unfolded_permute.sizes();
-      auto se2TimeY_unfolded_permute_reshaped = se2TimeY_unfolded_permute.reshape({shapeY[0], shapeY[1], shapeY[2], -1, shapeY[7]});//[27, 29, 28, 1215, 4]
-      std::cout << "se2TimeY_unfolded_permute_reshaped.sizes(): " << se2TimeY_unfolded_permute_reshaped.sizes() << std::endl;
-      
-      //===== se2TimeX train handle
-      std::cout << "==========se2TimeX train handle" << std::endl;
+      auto se2TimeY_unfolded_permute_reshaped = se2TimeY_unfolded_permute.reshape({shapeY[0], shapeY[1], shapeY[2], -1, shapeY[7]});//[31, 37, 36, 1620, 4]
+      // NOTE: 541.944 MB data_ptr<float>(): 0x77fcac000000
+      // std::cout << "se2TimeY_unfolded_permute_reshaped.sizes(): " << se2TimeY_unfolded_permute_reshaped.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeY_unfolded_permute_reshaped.data_ptr<float>() << std::endl; 
+
+      // 406.458 MB + 541.944 MB = 948.402 MB
+
+      //========== se2TimeX train handle
+      // std::cout << "\n==========se2TimeX train handle" << std::endl;
       // cat
-      auto se2TimeX_cated = torch::cat(se2TimeX, 0);//3x31x37x36x4
+      auto se2TimeX_cated = torch::cat(se2TimeX, 0);//[4, 35, 45, 44, 4]  
+      // NOTE: 1.890197754 MB data_ptr<float>(): 0x77fcf57bfa00 NOTE: as the same as before
       // std::cout << "se2TimeX_cated.sizes(): " << se2TimeX_cated.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeX_cated.data_ptr<float>() << std::endl; 
+
       // unfold
-      auto se2TimeX_unfolded = se2TimeX_cated.unfold(1, windows_dimyaw, 1).unfold(2, windows_dimxy, 1).unfold(3, windows_dimxy, 1);//[3, 27, 29, 28, 4, 5, 9, 9]
+      auto se2TimeX_unfolded = se2TimeX_cated.unfold(1, windowsDimyaw, 1).unfold(2, windowsDimxy, 1).unfold(3, windowsDimxy, 1);//[4, 31, 37, 36, 4, 5, 9, 9]
+      // NOTE: 406.458 MB data_ptr<float>(): 0x77fcf57bfa00 NOTE: as the same as before
       // std::cout << "se2TimeX_unfolded.sizes(): " << se2TimeX_unfolded.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeX_unfolded.data_ptr<float>() << std::endl; 
+
       // permute
-      auto se2TimeX_unfolded_permute = se2TimeX_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});
-      // std::cout << "se2TimeX_unfolded_permute.sizes(): " << se2TimeX_unfolded_permute.sizes() << std::endl;//[27, 29, 28, 3, 5, 9, 9, 4]
+      auto se2TimeX_unfolded_permute = se2TimeX_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});//[31, 37, 36, 4, 5, 9, 9, 4]
+      // NOTE: 406.458 MB data_ptr<float>(): 0x77fcf57bfa00 NOTE: as the same as before
+      // std::cout << "se2TimeX_unfolded_permute.sizes(): " << se2TimeX_unfolded_permute.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeX_unfolded_permute.data_ptr<float>() << std::endl; 
+
       // reshaped
       auto shapeX = se2TimeX_unfolded_permute.sizes();
-      auto se2TimeX_unfolded_permute_reshaped = se2TimeX_unfolded_permute.reshape({shapeX[0], shapeX[1], shapeX[2], -1, shapeX[7]});//[27, 29, 28, 1215, 4]
-      std::cout << "se2TimeX_unfolded_permute_reshaped.sizes(): " << se2TimeX_unfolded_permute_reshaped.sizes() << std::endl;
+      auto se2TimeX_unfolded_permute_reshaped = se2TimeX_unfolded_permute.reshape({shapeX[0], shapeX[1], shapeX[2], -1, shapeX[7]});//[31, 37, 36, 1620, 4]
+      // NOTE: 541.944 MB data_ptr<float>(): 0x77fc6a000000
+      // std::cout << "se2TimeX_unfolded_permute_reshaped.sizes(): " << se2TimeX_unfolded_permute_reshaped.sizes() << std::endl;
+      // std::cout << "data_ptr<float>(): " << se2TimeX_unfolded_permute_reshaped.data_ptr<float>() << std::endl; 
 
-      //===== se2TimeX pred handle
-      auto se2t_trainX = se2TimeX_unfolded_permute_reshaped; // [31, 37, 36, 1620, 4]
-      auto se2t_predX = new_se2Info.unsqueeze(-2); // [31, 37, 36, 4]
-      std::cout << "se2t_predX.sizes(): " << se2t_predX.sizes() << std::endl;
+      return {se2TimeX_unfolded_permute_reshaped, se2TimeY_unfolded_permute_reshaped};
+    }
 
-      //=====
-      print_cuda_memory_info("2. After catting data");
-      std::cout << "\n----------------------------------------" << "STBGKI-Compute Se2Dist" << "----------------------------------------" << std::endl;
-      //NOTE: parameters  
-      auto kernelScaler_ = 1.0;
-      auto klen_time = 2.0;
-      auto klen_yaw = pad_dimyaw * res_yaw;
-      auto klen_grid = pad_dimxy * res_xy;
-      std::cout << "klen_yaw: " << klen_yaw << std::endl;
-      std::cout << "klen_grid: " << klen_grid << std::endl;
-
-      // 确保输入张量形状正确
-      assert(se2t_trainX.sizes() == torch::IntArrayRef({31, 37, 36, 1620, 4}));
-      assert(se2t_predX.sizes() == torch::IntArrayRef({31, 37, 36, 1, 4}));
-
+    torch::Tensor computeSe2tDistMat(const torch::Tensor& se2tTrainX, const torch::Tensor& se2tPredX){
       auto slice = torch::indexing::Slice();
       // 定义一个lambda函数来简化索引表达式
       auto makeSlice = [slice](int dim) {
@@ -1411,19 +1417,19 @@ class LocalTensorBuffer{
       };
 
       // 计算时间戳的绝对差值
-      torch::Tensor timestamp_diff = torch::abs(se2t_trainX.index(makeSlice(0)) - se2t_predX.index(makeSlice(0)));
+      torch::Tensor timestamp_diff = torch::abs(se2tTrainX.index(makeSlice(0)) - se2tPredX.index(makeSlice(0)));
       std::cout << "timestamp_diff.sizes(): " << timestamp_diff.sizes() << std::endl;           
 
       // 计算yaw的绝对差值，并规范化到[-pi, pi]
-      torch::Tensor yaw_diff = torch::abs(se2t_trainX.index(makeSlice(1)) - se2t_predX.index(makeSlice(1)));
+      torch::Tensor yaw_diff = torch::abs(se2tTrainX.index(makeSlice(1)) - se2tPredX.index(makeSlice(1)));
       // 使用公式: (diff + π) % (2π) - π 来确保差值在[-π, π]范围内
       yaw_diff = (yaw_diff + torch::acos(torch::tensor(-1.0))) % (2 * torch::acos(torch::tensor(-1.0))) - torch::acos(torch::tensor(-1.0));
       std::cout << "yaw_diff.sizes(): " << yaw_diff.sizes() << std::endl;
 
       // 计算grid位置的欧几里得距离
       // 获取gridX和gridY的差值
-      torch::Tensor gridX_diff = se2t_trainX.index(makeSlice(2)) - se2t_predX.index(makeSlice(2));
-      torch::Tensor gridY_diff = se2t_trainX.index(makeSlice(3)) - se2t_predX.index(makeSlice(3));
+      torch::Tensor gridX_diff = se2tTrainX.index(makeSlice(2)) - se2tPredX.index(makeSlice(2));
+      torch::Tensor gridY_diff = se2tTrainX.index(makeSlice(3)) - se2tPredX.index(makeSlice(3));
       std::cout << "gridX_diff.sizes(): " << gridX_diff.sizes() << std::endl;
       std::cout << "gridY_diff.sizes(): " << gridY_diff.sizes() << std::endl;
 
@@ -1432,16 +1438,120 @@ class LocalTensorBuffer{
       std::cout << "grid_dist.sizes(): " << grid_dist.sizes() << std::endl;
 
       // 将三个距离维度组合成最终张量 [31,37,36,1620,3]
-      torch::Tensor se2_dist = torch::cat({timestamp_diff.unsqueeze(-1)/klen_time, yaw_diff.unsqueeze(-1)/klen_yaw, grid_dist.unsqueeze(-1)/klen_grid}, /*dim=*/-1);
-      std::cout << "se2_dist.sizes(): " << se2_dist.sizes() << std::endl;
+      auto se2t_dist = torch::cat({timestamp_diff.unsqueeze(-1), yaw_diff.unsqueeze(-1), grid_dist.unsqueeze(-1)}, /*dim=*/-1);
+      std::cout << "se2_dist.sizes(): " << se2t_dist.sizes() << std::endl;
+      return se2t_dist;
+    }
+
+    torch::Tensor computeSe2Kernel(const torch::Tensor& se2tDistMat, torch::Tensor& se2tKlen){
+      assert(se2tDistMat.size(-1) == se2tKlen.size(0));
+      const auto M2PI = 2.0 * M_PI;
+
+      auto klen = se2tKlen.unsqueeze(0).unsqueeze(0).unsqueeze(0).unsqueeze(0);
+
+      torch::Tensor se2_kernel; // [31, 37, 36, 1620, 3] ATTENTION: 0.74758GB
+      //local region, save cuda memory  
+      auto term11 = se2tDistMat.clone();
+      term11.div_(klen).mul_(M2PI).cos_().add_(2.0);
+      
+      auto term12 = se2tDistMat.clone();
+      term12.div_(klen).sub_(1.0).mul_(-0.333333);
+
+      auto term2 = se2tDistMat.clone();
+      term2.div_(klen).mul_(M2PI).sin_().div_(M2PI);
+
+      se2_kernel = term11.clone();
+      se2_kernel.mul_(term12).add_(term2);
+      se2_kernel.mul_((se2_kernel > 0.0).to(torch::kFloat32));
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor> fuseThroughSpatioTemporalBGKI(const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
+      if(data_.size() < capacity_){
+        std::cout << "buffer size not enough, now: " << data_.size() << std::endl;
+        return {torch::Tensor(), torch::Tensor()};
+      }
+      print_cuda_memory_info("0. before fuse, init state");
+
+      //! parameters
+      int windows_dimyaw = 5;
+      int windows_dimxy = 9;
+      // int klen_yaw = 0.5;//TODO:
+      // int klen_grid = 0.5;
+      // int klen_time = 0.5;
+
+      //PART: 1 extract overlap region of history data and new data
+      std::vector<torch::Tensor> se2TimeX, se2TimeY;
+      extractOverlapRegion(se2TimeX, se2TimeY, windows_dimyaw, windows_dimxy, new_se2Info, new_gridPos, new_timestamp);
+      print_cuda_memory_info("3. After new-added date ");
+
+      //PART: 2 construct se2trainX and se2trainY
+      std::cout << "\n----------------------------------------" << "STBGKI-Construct Se2TrainData" << "----------------------------------------" << std::endl;
+      // torch::Tensor se2t_trainX;// [31, 37, 36, 1620, 4]  ATTENTION: 0.99678GB
+      // torch::Tensor se2t_trainY;// [31, 37, 36, 1620, 4]  ATTENTION: 0.99678GB
+      auto [se2t_trainX, se2t_trainY] = assembleSe2tTrainData(se2TimeX, se2TimeY, windows_dimyaw, windows_dimxy);
+      torch::Tensor se2t_predX = new_se2Info.unsqueeze(-2); // [31, 37, 36, 4] 
+      std::cout << "\n=====After construct se2trainX and se2trainY" << std::endl;
+      std::cout << "se2t_trainX.sizes(): " << se2t_trainX.sizes() << ", use_count: [" << se2t_trainX.use_count() << "]" << std::endl;
+      std::cout << "se2t_trainY.sizes(): " << se2t_trainY.sizes() << ", use_count: [" << se2t_trainY.use_count() << "]" << std::endl;
+      std::cout << "se2t_predX.sizes():  " << se2t_predX.sizes() << ", use_count: [" << se2t_predX.use_count() << "]" << std::endl;
+      print_cuda_memory_info("4. After cat, unfold, permute, reshape TENSOR");
+
+      //PART: 3 compute se2_dist
+      std::cout << "\n----------------------------------------" << "STBGKI-Compute Se2Dist" << "----------------------------------------" << std::endl;
+      torch::Tensor se2_dist; // [31, 37, 36, 1620, 3] ATTENTION: 0.74758GB 
+      {
+        //NOTE: parameters  
+        auto kernelScaler_ = 1.0;
+        auto klen_time = 2.0;
+
+        int64_t pad_dimxy = (windows_dimxy - 1)/2;
+        int64_t pad_dimyaw = (windows_dimyaw - 1)/2;
+        auto klen_yaw = pad_dimyaw * res_yaw;
+        auto klen_grid = pad_dimxy * res_xy;
+        std::cout << "klen_yaw: " << klen_yaw << std::endl;
+        std::cout << "klen_grid: " << klen_grid << std::endl;
+
+        auto slice = torch::indexing::Slice();
+        // 定义一个lambda函数来简化索引表达式
+        auto makeSlice = [slice](int dim) {
+            return std::vector<torch::indexing::TensorIndex>{slice, slice, slice, slice, dim};
+        };
+
+        // 计算时间戳的绝对差值
+        torch::Tensor timestamp_diff = torch::abs(se2t_trainX.index(makeSlice(0)) - se2t_predX.index(makeSlice(0)));
+        std::cout << "timestamp_diff.sizes(): " << timestamp_diff.sizes() << std::endl;           
+
+        // 计算yaw的绝对差值，并规范化到[-pi, pi]
+        torch::Tensor yaw_diff = torch::abs(se2t_trainX.index(makeSlice(1)) - se2t_predX.index(makeSlice(1)));
+        // 使用公式: (diff + π) % (2π) - π 来确保差值在[-π, π]范围内
+        yaw_diff = (yaw_diff + torch::acos(torch::tensor(-1.0))) % (2 * torch::acos(torch::tensor(-1.0))) - torch::acos(torch::tensor(-1.0));
+        std::cout << "yaw_diff.sizes(): " << yaw_diff.sizes() << std::endl;
+
+        // 计算grid位置的欧几里得距离
+        // 获取gridX和gridY的差值
+        torch::Tensor gridX_diff = se2t_trainX.index(makeSlice(2)) - se2t_predX.index(makeSlice(2));
+        torch::Tensor gridY_diff = se2t_trainX.index(makeSlice(3)) - se2t_predX.index(makeSlice(3));
+        std::cout << "gridX_diff.sizes(): " << gridX_diff.sizes() << std::endl;
+        std::cout << "gridY_diff.sizes(): " << gridY_diff.sizes() << std::endl;
+
+        // 计算欧几里得距离
+        torch::Tensor grid_dist = torch::sqrt(gridX_diff.square() + gridY_diff.square());
+        std::cout << "grid_dist.sizes(): " << grid_dist.sizes() << std::endl;
+
+        // 将三个距离维度组合成最终张量 [31,37,36,1620,3]
+        se2_dist = torch::cat({timestamp_diff.unsqueeze(-1)/klen_time, yaw_diff.unsqueeze(-1)/klen_yaw, grid_dist.unsqueeze(-1)/klen_grid}, /*dim=*/-1);
+        std::cout << "se2_dist.sizes(): " << se2_dist.sizes() << std::endl;
+      }
+
+      print_cuda_memory_info("5. After compute se2_dist matrix");
 
       std::cout << "\n----------------------------------------" << "STBGKI-Compute covSparse" << "----------------------------------------" << std::endl;
       const auto M2PI = 2.0 * M_PI;
       std::cout << "M2PI: " << M2PI << std::endl;
 
-      print_cuda_memory_info("before compute  ");
       
-      torch::Tensor se2_kernel;
+      
+      torch::Tensor se2_kernel; // [31, 37, 36, 1620, 3] ATTENTION: 0.74758GB
       {//local region, save cuda memory  
         auto term11 = se2_dist.clone();
         term11.mul_(M2PI).cos_().add_(2.0);
@@ -1454,7 +1564,6 @@ class LocalTensorBuffer{
 
         se2_kernel = term11.clone();
         se2_kernel.mul_(term12).add_(term2);
-
         // se2_kernel.mul_((se2_kernel > 0.0).to(torch::kFloat32));
       }
 
@@ -1886,89 +1995,13 @@ int main() {
   //   }
   //   std::cout << "se2_kernel.sizes(): " << se2_kernel.sizes() << std::endl;
   //   std::cout << "se2_kernel.abs().sum(): " << se2_kernel.abs().sum() << std::endl;
-
-
-
-  //   // //! deconstructor  
-  //   // std::cout << "\n=====Before Deconstructor" << std::endl;
-  //   // std::cout << "se2_dist.use_count(): " << se2_dist.use_count() << std::endl;
-  //   // std::cout << "term11.use_count(): " << term11.use_count() << std::endl;
-  //   // std::cout << "term12.use_count(): " << term12.use_count() << std::endl;
-  //   // std::cout << "term2.use_count(): " << term2.use_count() << std::endl;
-  //   // std::cout << "se2_kernel.use_count(): " << se2_kernel.use_count() << std::endl;
-    
-  //   // term11.reset();
-  //   // term12.reset();
-  //   // term2.reset();
-
-  //   // std::cout << "\n=====After Deconstructor" << std::endl;
-  //   // std::cout << "term11.use_count(): " << term11.use_count() << "\tterm11.sizes():" << term11.sizes() << std::endl;
-  //   // std::cout << "term12.use_count(): " << term12.use_count() << "\tterm12.sizes():" << term12.sizes() << std::endl;
-  //   // std::cout << "term2.use_count(): " << term2.use_count() << "\tterm2.sizes():" << term2.sizes() << std::endl;
-  //   // std::cout << "se2_kernel.use_count(): " << se2_kernel.use_count() << "\tse2_kernel.sizes():" << se2_kernel.sizes() << std::endl;
-  //   // print_cuda_memory_info("8. Free term11 term12 term2");
   // }
+  
   // print_cuda_memory_info("9. region over");
 
   // auto temp1 = torch::ones({31,37,36,1620,3, 5}).to(torch::kCUDA).to(torch::kFloat32);
   // print_cuda_memory_info("10. alloc memory 2.1GB tensor");
 
-
-  // //! 1. shadow copy  
-  // // 创建 tensor1 并初始化
-  // auto tensor1 = torch::rand({2, 3});
-  
-  // // 简单赋值（值赋值），tensor2 获取 tensor1 的拷贝
-  // auto tensor2 = tensor1; // 指针相同，修改tensor2的同时tensor1也会被修改
-  // // auto &tensor2 = tensor1; // 指针相同，修改tensor2的同时tensor1也会被修改
-  // // auto tensor2 = std::move(tensor1); // tensor1被消灭（tensor1: [ Tensor (undefined) ]），全权转移至tensor2
-  // // auto tensor2 = tensor1.clone();
-  // // auto tensor2 = tensor1.view({3,2});
-
-  // // 输出 tensor1 和 tensor2 的指针地址
-  // std::cout << "=====Origin tensor pointers" << std::endl;
-  // std::cout << "tensor1 data pointer: " << tensor1.data_ptr<float>() << std::endl;
-  // std::cout << "tensor2 data pointer: " << tensor2.data_ptr<float>() << std::endl;
-
-  // // 输出 tensor1 和 tensor2 的初始值
-  // std::cout << "=====Origin tensors" << std::endl;
-  // std::cout << "tensor1:\n" << tensor1 << std::endl;
-  // std::cout << "tensor2:\n" << tensor2 << std::endl;
-
-  // // 修改 tensor2 的值
-  // tensor2[0][0] = 5;;
-  // tensor2[1][1] = 115;;
-
-  // // 输出 tensor1 和 tensor2 的指针地址（修改后）
-  // std::cout << "=====Changed tensor pointers" << std::endl;
-  // std::cout << "tensor1 data pointer: " << tensor1.data_ptr<float>() << std::endl;
-  // std::cout << "tensor2 data pointer: " << tensor2.data_ptr<float>() << std::endl;
-
-  // // 输出 tensor1 和 tensor2 的值（修改后）
-  // std::cout << "=====Changed tensors" << std::endl;
-  // std::cout << "tensor1:\n" << tensor1 << std::endl;
-  // std::cout << "tensor2:\n" << tensor2 << std::endl;
-
-  // auto tensor1_x_MPI = tensor1 * M2PI;
-  // auto tensor1_sin = tensor1.sin();
-  // std::cout << "tensor1       data pointer: " << tensor1.data_ptr<float>() << std::endl;
-  // std::cout << "tensor1: \n" << tensor1 << std::endl;
-  // std::cout << "tensor1_x_MPI data pointer: " << tensor1_x_MPI.data_ptr<float>() << std::endl;
-  // std::cout << "tensor1_x_MPI: \n" << tensor1_x_MPI << std::endl;
-  // std::cout << "tensor1_sin   data pointer: " << tensor1_sin.data_ptr<float>() << std::endl;
-  // std::cout << "tensor1_sin: \n" << tensor1_sin << std::endl;
-
-  // // 
-  // std::cout << "=====deconstructor" << std::endl;
-  // std::cout << "=tensor1.~Tensor();" << std::endl;
-  // tensor1.~Tensor();
-  // std::cout << "tensor1:\n" << tensor1 << std::endl;
-  // std::cout << "tensor2:\n" << tensor2 << std::endl;  
-
-  // std::cout << "=tensor2.~Tensor();" << std::endl;
-  // tensor2.~Tensor();
-  // std::cout << "tensor1:\n" << tensor1 << std::endl;
-  // std::cout << "tensor2:\n" << tensor2 << std::endl;  
 
 
   
