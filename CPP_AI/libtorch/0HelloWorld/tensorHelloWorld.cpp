@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-03-22 06:41:27
- * @LastEditTime: 2025-05-11 10:31:54
+ * @LastEditTime: 2025-05-12 03:39:58
  * @FilePath: /test/CPP_AI/libtorch/0HelloWorld/tensorHelloWorld.cpp
  * @Description: 
  * @Reference: 
@@ -1460,9 +1460,9 @@ class LocalTensorBuffer{
       auto term2 = se2tDistMat.clone();
       term2.div_(klen).mul_(M2PI).sin_().div_(M2PI);
 
-      se2_kernel = term11.clone();
-      se2_kernel.mul_(term12).add_(term2);
+      se2_kernel = term11.mul_(term12).add_(term2);
       se2_kernel.mul_((se2_kernel > 0.0).to(torch::kFloat32));
+      return se2_kernel;
     }
 
     std::tuple<torch::Tensor, torch::Tensor> fuseThroughSpatioTemporalBGKI(const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
@@ -1475,9 +1475,6 @@ class LocalTensorBuffer{
       //! parameters
       int windows_dimyaw = 5;
       int windows_dimxy = 9;
-      // int klen_yaw = 0.5;//TODO:
-      // int klen_grid = 0.5;
-      // int klen_time = 0.5;
 
       //PART: 1 extract overlap region of history data and new data
       std::vector<torch::Tensor> se2TimeX, se2TimeY;

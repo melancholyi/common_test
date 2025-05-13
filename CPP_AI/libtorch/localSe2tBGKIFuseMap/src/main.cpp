@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-05-11 10:35:08
- * @LastEditTime: 2025-05-12 13:25:37
+ * @LastEditTime: 2025-05-13 09:33:45
  * @FilePath: /test/CPP_AI/libtorch/localSe2tBGKIFuseMap/src/main.cpp
  * @Description: 
  * @Reference: 
@@ -47,10 +47,13 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
     static int count = -1;
     count++;
     auto gridPos = generateGridTensor(37, 36, res_xy, start); // 31 x 37 x 36 x 2
-    // std::cout << "gridPos[0][0]: \n" << gridPos[0][0] << std::endl;
-    // std::cout << "gridPos[36][35]: \n" << gridPos[36][35] << std::endl;
+    std::cout << "gridPos[0][0]: \n" << gridPos[0][0] << std::endl;
+    std::cout << "gridPos[36][35]: \n" << gridPos[36][35] << std::endl;
+    // std::cout << "gridPos: \n" << gridPos << std::endl;
     
-    auto se2Info = 1 * torch::ones({31, 37, 36, 4}).to(device_).to(dtype_);// 31 x 37 x 36 x 4, nx ny nz trav  
+    // std::cout << "gridPos.sum():" << gridPos.sum() << std::endl;
+    
+    auto se2Info = 1 * torch::ones({31, 37, 36, 3}).to(device_).to(dtype_);// 31 x 37 x 36 x 4, nx ny nz trav  
 
     std::cout << "se2Info.abs().sum(): " << se2Info.abs().sum() << std::endl;
 

@@ -19,8 +19,9 @@ torch::Tensor generateGridTensor(int height, int width, float resolution, const 
 class LocalTensorBuffer{
   private:
     struct MapInfo{
-      torch::Tensor se2Info;
-      torch::Tensor gridPos;
+      torch::Tensor se2Info; //[yawDim, xDim, yDim, valueDim](valueDim = 3: nx, ny, trav)
+      torch::Tensor gridPos; //[        xDIm, yDim, gridDim](gridDim = 2: x, y)
+      torch::Tensor variance;//[yawDim, xDim, yDim, 1]
       float timestamp;
     };
   public://membership function
@@ -55,12 +56,19 @@ class LocalTensorBuffer{
       std::cout << "insert se2Info.abs().sum(): " << se2Info.abs().sum() << std::endl;
       temp2 = temp2.to(device_);
       if (data_.size() >= capacity_) {
-        auto [tensor_fused, cov_fused]  = fuseThroughSpatioTemporalBGKI(temp1, temp2, timestamp);
+        auto [ybar, kbar]  = fuseThroughSpatioTemporalBGKI(temp1, temp2, timestamp);
+        tensor_fused = ybar;
+        cov_fused = kbar;
         data_.pop_front();
       }else{
         tensor_fused = temp1;
+        cov_fused = torch::ones({se2Info.size(0), se2Info.size(1), se2Info.size(2), 1}).to(dtype_).to(device_);
+        cov_fused.mul_(varianceInit_);
+        std::cout << "!!!!!cov_fused.abs().sum():" << cov_fused.abs().sum() << std::endl;
       }
-      data_.push_back({tensor_fused, temp2, timestamp});
+      data_.push_back({tensor_fused, temp2, cov_fused, timestamp});
+      std::cout << "DEBUG INSERT OVER: data_.back().se2Info.sum():" << data_.back().se2Info.sum() << std::endl;
+      std::cout << "DEBUG INSERT OVER: data_.back().gridPos.sum():" << data_.back().gridPos.sum() << std::endl;
     }
 
   private://membership function
@@ -87,14 +95,20 @@ class LocalTensorBuffer{
     torch::Tensor yawTensor_;  
     float resYaw_;
     float resGrid_;
+    
+    torch::DeviceType device_;
+    torch::Dtype dtype_;
+
     torch::Tensor kLenTimeYawGrid_;
     int padDimYaw_; // std::round(Klen_yaw / resYaw_);
     int padDimXY_;  // std::round(Klen_xy / resGrid_);
     int windowsDimYaw_; // 2 * padDimYaw_ + 1;
     int windowsDimXY_;  // 2 * padDimXY_ + 1;
 
-    torch::DeviceType device_;
-    torch::Dtype dtype_;
+    const float varianceInit_ = 1e-4;
+    const float delta_ = 1e-6;
+
+
     std::deque<MapInfo> data_;
 };
 
