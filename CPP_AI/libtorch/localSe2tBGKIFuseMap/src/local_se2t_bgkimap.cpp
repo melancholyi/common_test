@@ -84,7 +84,7 @@ LocalTensorBuffer::getOverlapRegion2D(const torch::Tensor& start1, const std::pa
 }
 
 
-void LocalTensorBuffer::extractOverlapRegion(std::vector<torch::Tensor>& se2TimeX, std::vector<torch::Tensor>& se2TimeY, const std::deque<MapInfo>& otherDatas,const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
+void LocalTensorBuffer::extractOverlapRegion(std::vector<torch::Tensor>& se2TimeX, std::vector<torch::Tensor>& se2TimeY, std::vector<torch::Tensor>& se2TimeVariance, const std::deque<MapInfo>& otherDatas,const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
   
   torch::Tensor offset = torch::ones({2}).to(dtype_).to(device_) * resGrid_ * padDimXY_;// ignore
 
@@ -143,6 +143,28 @@ void LocalTensorBuffer::extractOverlapRegion(std::vector<torch::Tensor>& se2Time
     se2TimeY_temp.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, overlap_se2Info_padded);
     se2TimeY.push_back(se2TimeY_temp.unsqueeze(0));
 
+    //! PART: se2TimeVariance
+    //se2TimeVariance_temp [35, 45, 44, 1]
+    auto se2TimeVariance_temp = torch::ones({new_se2Info_padded.size(0), new_se2Info_padded.size(1), new_se2Info_padded.size(2), 1}).to(dtype_).to(device_) * varianceInit_;
+    //std::cout << "-----NEW se2TimeVariance_temp.sizes():" << se2TimeVariance_temp.sizes() << std::endl;
+    auto overlap_se2TimeVariance = data.variance.index({torch::indexing::Slice(), old_sx,old_sy, torch::indexing::Slice()});
+    //std::cout << "-----NEW overlap_se2TimeVariance.sizes():" << overlap_se2TimeVariance.sizes() << std::endl;
+    auto overlap_se2TimeVariance_padded = torch::nn::functional::pad(overlap_se2TimeVariance, options_pad_yaw);
+    //std::cout << "-----NEW overlap_se2TimeVariance_padded.sizes():" << overlap_se2TimeVariance_padded.sizes() << std::endl;
+    // 循环填充，左右新空白部分填充为原始数据的右边和左边的值
+    auto padded_size_dim0_2 = overlap_se2TimeVariance_padded.size(0);
+    torch::Tensor yaw_right_region_2 = overlap_se2TimeVariance_padded.slice(0, padded_size_dim0_2 - 2*padDimYaw_, padded_size_dim0_2 - padDimYaw_);//0-31:33
+    torch::Tensor yaw_left_region_2 = overlap_se2TimeVariance_padded.slice(0, padDimYaw_, 2*padDimYaw_);//0-2:3
+    overlap_se2TimeVariance_padded.slice(0, 0, padDimYaw_).copy_(yaw_right_region_2);
+    overlap_se2TimeVariance_padded.slice(0, padded_size_dim0_2 - padDimYaw_, padded_size_dim0_2).copy_(yaw_left_region_2);
+    //std::cout << "-----NEW overlap_se2TimeVariance_padded.sizes():" << overlap_se2TimeVariance_padded.sizes() << std::endl;
+    // std::cout << "runhere4" << std::endl;
+
+    // 赋值历史数据至新的数据（形状相同但均为0数据）
+    se2TimeVariance_temp.index_put_({torch::indexing::Slice(), new_sx,new_sy, torch::indexing::Slice()}, overlap_se2TimeVariance_padded);
+    //std::cout << "-----NEW se2TimeVariance_temp.sizes():" << se2TimeVariance_temp.sizes() << std::endl;
+    se2TimeVariance.push_back(se2TimeVariance_temp.unsqueeze(0));
+
     //! PART: se2TimeX
     auto se2TimeX_temp = torch::ones({new_se2Info_padded.size(0), new_se2Info_padded.size(1), new_se2Info_padded.size(2), 4}).to(dtype_).to(device_)*1e5;//1e5!! [35, 45, 44, 4]
 
@@ -179,6 +201,15 @@ void LocalTensorBuffer::extractOverlapRegion(std::vector<torch::Tensor>& se2Time
   new_se2Info_padded.slice(0, padded_size_dim0 - padDimYaw_, padded_size_dim0).copy_(yaw_left_region);
   se2TimeY.push_back(new_se2Info_padded.unsqueeze(0));
 
+  
+  //！ PART: se2TimeVariance new
+
+
+  auto se2TimeVariance_temp = torch::ones({new_se2Info_padded.size(0), new_se2Info_padded.size(1), new_se2Info_padded.size(2), 1}).to(dtype_).to(device_) * varianceInit_;//[35, 45, 44, 1]
+  //std::cout << "-----NEW se2TimeVariance_temp.sizes():" << se2TimeVariance_temp.sizes() << std::endl;
+  se2TimeVariance.push_back(se2TimeVariance_temp.unsqueeze(0));
+
+
   //! PART:
   //! new data new_se2Xvalue_padded
   auto se2TimeX_temp = torch::ones({new_se2Info_padded.size(0), new_se2Info_padded.size(1), new_se2Info_padded.size(2), 4}).to(dtype_).to(device_)*1e5;//1e5!! [35, 45, 44, 4] NOTE: 1.0574 MB
@@ -199,7 +230,7 @@ void LocalTensorBuffer::extractOverlapRegion(std::vector<torch::Tensor>& se2Time
 
 
 
-std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::assembleSe2tTrainData(const std::vector<torch::Tensor>& se2TimeX, const std::vector<torch::Tensor>& se2TimeY){
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> LocalTensorBuffer::assembleSe2tTrainData(const std::vector<torch::Tensor>& se2TimeX, const std::vector<torch::Tensor>& se2TimeY, std::vector<torch::Tensor>& se2TimeVariance){
   // std::cout << "\n----------------------------------------" << "Begin to cat data" << "----------------------------------------" << std::endl;
   //========== se2TimeY train handle
   // cat data  
@@ -219,6 +250,15 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::assembleSe2tTrainDat
   auto se2TimeY_unfolded_permute_reshaped = se2TimeY_unfolded_permute.reshape({shapeY[0], shapeY[1], shapeY[2], -1, shapeY[7]});//[31, 37, 36, 1620, 4]
   // NOTE: 541.944 MB data_ptr<float>(): 0x77fcac000000
   // 406.458 MB + 541.944 MB = 948.402 MB
+
+  //========== se2TimeVariance train handle
+  // cat data
+  auto se2TimeVariance_cated = torch::cat(se2TimeVariance, 0);//[4, 35, 45, 44, 1]
+  auto se2TimeVariance_unfolded = se2TimeVariance_cated.unfold(1, windowsDimYaw_, 1).unfold(2, windowsDimXY_, 1).unfold(3, windowsDimXY_, 1);//[4, 31, 37, 36, 1, 5, 9, 9]
+  auto se2TimeVariance_unfolded_permute = se2TimeVariance_unfolded.permute({1, 2, 3, 0, 5, 6, 7, 4});//[31, 37, 36, 4, 5, 9, 9, 1]
+  auto shapeV = se2TimeVariance_unfolded_permute.sizes();
+  auto se2TimeVariance_unfolded_permute_reshaped = se2TimeVariance_unfolded_permute.reshape({shapeV[0], shapeV[1], shapeV[2], -1, shapeV[7]});//[31, 37, 36, 1620, 1]
+  // std::cout << "se2TimeVariance_unfolded_permute_reshaped.sizes(): " << se2TimeVariance_unfolded_permute_reshaped.sizes() << std::endl;
 
   //========== se2TimeX train handle
   // cat
@@ -240,7 +280,7 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::assembleSe2tTrainDat
   // // std::cout << "se2TimeX_unfolded_permute_reshaped.sizes(): " << se2TimeX_unfolded_permute_reshaped.sizes() << std::endl;
   // NOTE: 541.944 MB data_ptr<float>(): 0x77fc6a000000
 
-  return {se2TimeX_unfolded_permute_reshaped, se2TimeY_unfolded_permute_reshaped};
+  return {se2TimeX_unfolded_permute_reshaped, se2TimeY_unfolded_permute_reshaped, se2TimeVariance_unfolded_permute_reshaped};
 }
 
 //ATTENTION: simple version 
@@ -556,7 +596,7 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::computeYbarKbarCUDAK
         delta,
         dim_i, dim_j, dim_k, dim_l, dim_c);
 
-    return std::make_tuple(ybar, kbar);
+    return std::make_tuple(ybar, kbar.unsqueeze(-1));
 }
 
 torch::Tensor LocalTensorBuffer::batchHandleTensorOperator(std::function<torch::Tensor(const torch::Tensor&)> _operFun, float _funUseGB, const torch::Tensor& _inputTensor) {
@@ -600,7 +640,7 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::fuseThroughSpatioTem
   //PART: 1 extract overlap region of history data and new data
   // std::cout << "\n----------------------------------------" << "STBGKI-Prepare data, extract overlap region" << "----------------------------------------" << std::endl;
   std::vector<torch::Tensor> se2TimeX, se2TimeY, se2TimeVariance;
-  extractOverlapRegion(se2TimeX, se2TimeY, data_, new_se2Info, new_gridPos, new_timestamp);
+  extractOverlapRegion(se2TimeX, se2TimeY, se2TimeVariance, data_, new_se2Info, new_gridPos, new_timestamp);
   //printCudaMemoryInfo("3. After new-added date ");
   auto extractOverlapRegion_ms = timer_cuda.end();
   std::cout << "extractOverlapRegion time: " << extractOverlapRegion_ms << " ms" << std::endl;
@@ -608,7 +648,7 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::fuseThroughSpatioTem
   timer_cuda.start();
   //PART: 2 construct se2trainX and se2trainY
   // std::cout << "\n----------------------------------------" << "STBGKI-Construct Se2TrainData" << "----------------------------------------" << std::endl;
-  auto [se2t_trainX, se2t_trainY] = assembleSe2tTrainData(se2TimeX, se2TimeY); // [31, 37, 36, 1620, 4]  ATTENTION: 0.99678GB
+  auto [se2t_trainX, se2t_trainY, se2t_trainVariance] = assembleSe2tTrainData(se2TimeX, se2TimeY, se2TimeVariance); // [31, 37, 36, 1620, 4]  ATTENTION: 0.99678GB
   // torch::Tensor se2t_predX = new_se2Info.unsqueeze(-2); // [31, 37, 36, 4] //BUG: BUG: 
   auto assembleSe2tTrainData_ms = timer_cuda.end();
   std::cout << "assembleSe2tTrainData time: " << assembleSe2tTrainData_ms << " ms" << std::endl;
@@ -685,16 +725,16 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::fuseThroughSpatioTem
   // varianceInit_:scalar 1e-4
   // delta_: 1e-6
 
-  // kbar:[31, 37, 36]
+  // kbar:[31, 37, 36, 1]
   // ybar:[31, 37, 36, 4]
 
   // computeYbarKbar(se2t_kernel, se2t_trainSigma2, new_se2Info, )
 
 
-  auto se2t_trainSigma2 = torch::ones_like(se2t_kernel).to(device_).to(dtype_)*varianceInit_;
+  // auto se2t_trainSigma2 = torch::ones_like(se2t_kernel).to(device_).to(dtype_)*varianceInit_;
 
   // auto [ybar, kbar] = computeYbarKbar(se2t_kernel, se2t_trainSigma2, se2t_trainY, new_se2Info);
-  auto [ybar, kbar] = computeYbarKbarCUDAKernel(se2t_kernel, se2t_trainSigma2, se2t_trainY, new_se2Info, varianceInit_, delta_);
+  auto [ybar, kbar] = computeYbarKbarCUDAKernel(se2t_kernel, se2t_trainVariance, se2t_trainY, new_se2Info, varianceInit_, delta_);
 
 
 

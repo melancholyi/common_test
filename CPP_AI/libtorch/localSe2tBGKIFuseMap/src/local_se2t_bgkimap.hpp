@@ -93,14 +93,15 @@ class LocalTensorBuffer{
         timer.start();
         std::chrono::high_resolution_clock::time_point time_start_cpu;
         time_start_cpu = std::chrono::high_resolution_clock::now();
-        
+        std::cout << "\n==========Fuse Again Frame Data.\n-----Every step runtime:" << std::endl;
         auto [ybar, kbar]  = fuseThroughSpatioTemporalBGKI(temp1, temp2, timestamp);
         
         float runtime_ms = timer.end();
-        std::cout << "runtime_ms: " << runtime_ms << " ms" << std::endl;
+        std::cout << "\n-----summary: " << std::endl;
+        std::cout << "device: GPU  memsurement: " << runtime_ms << " ms" << std::endl;
         auto time_end_cpu = std::chrono::high_resolution_clock::now();
         auto duration_cpu = std::chrono::duration_cast<std::chrono::microseconds>(time_end_cpu - time_start_cpu);
-        std::cout << "device: CPU    memsurement | " << "Eigenvalue decomposition runtime: " << duration_cpu.count()/1000.0 << " ms" << std::endl;
+        std::cout << "device: CPU  memsurement: " << duration_cpu.count()/1000.0 << " ms" << std::endl;
         
         
         tensor_fused = ybar;
@@ -142,20 +143,20 @@ class LocalTensorBuffer{
     std::tuple<torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice, torch::indexing::Slice> 
     getOverlapRegion2D(const torch::Tensor& start1, const std::pair<int, int>& shape1, 
                        const torch::Tensor& start2, const std::pair<int, int>& shape2, double resolution);
-    void extractOverlapRegion(std::vector<torch::Tensor>& se2TimeX, std::vector<torch::Tensor>& se2TimeY, const std::deque<MapInfo>& otherDatas, const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp);
-    std::tuple<torch::Tensor, torch::Tensor> assembleSe2tTrainData(const std::vector<torch::Tensor>& se2TimeX, const std::vector<torch::Tensor>& se2TimeY);
+    void extractOverlapRegion(std::vector<torch::Tensor>& se2TimeX, std::vector<torch::Tensor>& se2TimeY, std::vector<torch::Tensor>& se2TimeVariance, const std::deque<MapInfo>& otherDatas, const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp);
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> assembleSe2tTrainData(const std::vector<torch::Tensor>& se2TimeX, const std::vector<torch::Tensor>& se2TimeY, std::vector<torch::Tensor>& se2TimeVariance);
     
     //NOTE: libtorch version
     torch::Tensor computeSe2tDistMat(const torch::Tensor& se2tTrainX, const torch::Tensor& se2tPredX);
     torch::Tensor computeSe2tKernel(const torch::Tensor& se2tDistMat);
     std::tuple<torch::Tensor, torch::Tensor> computeYbarKbar(const torch::Tensor& se2tKernel, const torch::Tensor& se2tTrainSigma2, 
-    const torch::Tensor& se2tTrainY, const torch::Tensor& newSe2Info);
+      const torch::Tensor& se2tTrainY, const torch::Tensor& newSe2Info);
 
     //NOTE: custom CUDA-Kernel version, faster
     torch::Tensor computeSe2tDistMatCUDAKernel(const torch::Tensor& se2tTrainX, const torch::Tensor& se2tPredX);
     torch::Tensor computeSe2tKernelCUDAKernel(const torch::Tensor& se2tDistMat);
     std::tuple<torch::Tensor, torch::Tensor> computeYbarKbarCUDAKernel(const torch::Tensor& se2tKernel, const torch::Tensor& se2tTrainSigma2, 
-    const torch::Tensor& se2tTrainY, const torch::Tensor& newSe2Info, float varianceInit, float delta);
+      const torch::Tensor& se2tTrainY, const torch::Tensor& newSe2Info, float varianceInit, float delta);
     
     torch::Tensor batchHandleTensorOperator(std::function<torch::Tensor(const torch::Tensor&)> _operFun, float _funUseGB, const torch::Tensor& _inputTensor);
     std::tuple<torch::Tensor, torch::Tensor> fuseThroughSpatioTemporalBGKI(const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp);

@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-05-11 10:35:08
- * @LastEditTime: 2025-05-16 12:24:47
+ * @LastEditTime: 2025-05-16 15:21:13
  * @FilePath: /test/CPP_AI/libtorch/localSe2tBGKIFuseMap/src/main.cpp
  * @Description: 
  * @Reference: 
@@ -45,7 +45,7 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   //PART:2
   // std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {0.1, 0.0}};
   // std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0};
-  // LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {1.0, 0.2, 0.4});
+  // LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {1.0, 0.4, 0.8});
 
   //PART:3
   std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {0.1, 0.0}};
