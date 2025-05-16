@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-05-15 12:24:49
- * @LastEditTime: 2025-05-15 13:17:07
+ * @LastEditTime: 2025-05-16 11:31:22
  * @FilePath: /test/CPP_AI/libtorch/localSe2tBGKIFuseMap/include/cuda_kernel.h
  * @Description: 
  * @Reference: 
@@ -33,6 +33,17 @@ void computeSe2tDistMatKernelInterface(
     int output_stride0, int output_stride1, int output_stride2, int output_stride3, int output_stride4,
     int s0, int s1, int s2, int s3,
     int blocks, int threads_per_block);
+
+void computeYbarKbarInterface(
+    float* se2tKernel,
+    const float* se2tTrainSigma2,
+    const float* se2tTrainY,
+    const float* newSe2Info,
+    float* kbar,
+    float* ybar,
+    float varianceInit,
+    float delta,
+    int dim_i, int dim_j, int dim_k, int dim_l, int dim_c);
 
 #ifdef __cplusplus
 }

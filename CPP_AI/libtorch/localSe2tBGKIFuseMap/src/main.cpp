@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-05-11 10:35:08
- * @LastEditTime: 2025-05-15 15:07:44
+ * @LastEditTime: 2025-05-16 12:24:47
  * @FilePath: /test/CPP_AI/libtorch/localSe2tBGKIFuseMap/src/main.cpp
  * @Description: 
  * @Reference: 
@@ -37,13 +37,24 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   // std::cout << "yaw_31x1.sizes(): " << yaw_31x1.sizes() << std::endl;
   // // std::cout << "yaw_31x1: \n" << yaw_31x1 << std::endl; // [-3.0 ~ +3.0]
 
-  std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {0.1, 0.0}};
-  std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0};
-  LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {1.0, 0.2, 0.4});
-
+  //PART:1
   // std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {0.1, 0.0}};
   // std::vector<float> timestamps = {0.0, 3.0};
   // LocalTensorBuffer buffer(starts.size()-1, yaw_31x1, res_xy, res_yaw, {1.0, 0.2, 0.3});
+
+  //PART:2
+  // std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {0.1, 0.0}};
+  // std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0};
+  // LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {1.0, 0.2, 0.4});
+
+  //PART:3
+  std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {0.1, 0.0}};
+  std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {1.0, 0.2, 0.8});
+
+
+
+
 
   
 
@@ -77,8 +88,5 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
 
 int main(){
     testLocalTensorBufferFuseThroughSTBGKI();
-
-
-
     return 0;
 }

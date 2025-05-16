@@ -94,26 +94,143 @@ __global__ void computeSe2tDistMatKernel(
     output_data[output_offset2] = grid_dist;
 }
 
-//========== Interface function ==========
-void computeSe2tCovSparseKernelInterface(
-    const float* se2tDistMat,
-    const float* kLen,
-    float* output,
-    int num_elements,
-    int num_channels,
-    int blocks,
-    int threads_per_block
-){
-    //begin cuda kernel
-    computeSe2tCovSparseKernel<<<blocks, threads_per_block>>>(
-        se2tDistMat,
-        kLen,
-        output,
-        num_elements,
-        num_channels
-    );
+__global__ void fused_bgki_kernel(
+    float* se2tKernel,
+    const float* se2tTrainSigma2,
+    const float* se2tTrainY,
+    const float* se2tInfo,
+    float* kbar,
+    float* ybar,
+    float varianceInit,
+    float delta,
+    int dim_i, int dim_j, int dim_k, int dim_l, int dim_c) 
+{
+    // 三维索引计算
+    const int i = blockIdx.z;
+    const int j = blockIdx.y;
+    const int k = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (i >= dim_i || j >= dim_j || k >= dim_k) return;
+
+    // 第一步：处理除法操作 (in-place)
+    for(int l=0; l<dim_l; ++l){
+        const int kernel_idx = ((i * dim_j + j) * dim_k + k) * dim_l + l;
+        se2tKernel[kernel_idx] /= se2tTrainSigma2[kernel_idx];
+    }
+
+    // 第二步：计算kbar
+    float ksum = 0.0f;
+    for(int l=0; l<dim_l; ++l){
+        const int kernel_idx = ((i * dim_j + j) * dim_k + k) * dim_l + l;
+        ksum += se2tKernel[kernel_idx];
+    }
+    const float kbar_val = ksum + 1.0f / varianceInit;
+    kbar[(i * dim_j + j) * dim_k + k] = kbar_val;
+
+    // 第三步：计算ybar
+    for(int c=0; c<dim_c; ++c){
+        float ysum = 0.0f;
+        for(int l=0; l<dim_l; ++l){
+            const int kernel_idx = ((i * dim_j + j) * dim_k + k) * dim_l + l;
+            const int y_idx = (((i * dim_j + j) * dim_k + k) * dim_l + l) * dim_c + c;
+            ysum += se2tTrainY[y_idx] * se2tKernel[kernel_idx];
+        }
+        
+        const int mu_idx = ((i * dim_j + j) * dim_k + k) * 4 + c; // 假设se2tInfo最后一维>=dim_c
+        ysum += se2tInfo[mu_idx] / varianceInit;
+        
+        const int ybar_idx = ((i * dim_j + j) * dim_k + k) * dim_c + c;
+        ybar[ybar_idx] = ysum / (kbar_val + delta);
+    }
+
+    // 第四步：kbar取倒数 (in-place)
+    kbar[(i * dim_j + j) * dim_k + k] = 1.0f / kbar_val;
 }
 
+template <unsigned BLOCK_SIZE>
+__global__ void computeYbarKbarFusedKernel(
+    float* se2tKernel,
+    const float* se2tTrainSigma2,
+    const float* se2tTrainY,
+    const float* newSe2Info,
+    float* kbar,
+    float* ybar,
+    float varianceInit,
+    float delta,
+    int dim_i, int dim_j, int dim_k, int dim_l, int dim_c) 
+{
+    // 共享内存存储中间结果
+    __shared__ float smem_kbar[BLOCK_SIZE];
+    __shared__ float smem_y[BLOCK_SIZE * 3]; // 假设dim_c=3
+
+    // 三维索引计算
+    const int global_idx = blockIdx.x;
+    const int i = global_idx / (dim_j * dim_k);
+    const int remainder = global_idx % (dim_j * dim_k);
+    const int j = remainder / dim_k;
+    const int k = remainder % dim_k;
+
+    // 线程局部存储
+    float local_kbar = 0.0f;
+    float local_y[3] = {0.0f};
+
+    // 遍历所有l维度
+    for (int l_base = 0; l_base < dim_l; l_base += BLOCK_SIZE) {
+        const int l = l_base + threadIdx.x;
+        if (l < dim_l) {
+            // 计算全局索引
+            const int kernel_idx = ((i * dim_j + j) * dim_k + k) * dim_l + l;
+            
+            // 执行除法并更新全局内存
+            const float sigma2 = se2tTrainSigma2[kernel_idx];
+            const float kernel_val = se2tKernel[kernel_idx] / sigma2;
+            se2tKernel[kernel_idx] = kernel_val;  // 原位更新
+
+            // 累加kbar
+            local_kbar += kernel_val;
+
+            // 累加ybar
+            for (int c = 0; c < dim_c; ++c) {
+                const int y_idx = (((i * dim_j + j) * dim_k + k) * dim_l + l) * dim_c + c;
+                local_y[c] += se2tTrainY[y_idx] * kernel_val;
+            }
+        }
+    }
+
+    // 块内归约
+    smem_kbar[threadIdx.x] = local_kbar;
+    for (int c = 0; c < dim_c; ++c) {
+        smem_y[threadIdx.x * dim_c + c] = local_y[c];
+    }
+    __syncthreads();
+
+    // 并行归约 (假设BLOCK_SIZE为2的幂)
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (threadIdx.x < s) {
+            smem_kbar[threadIdx.x] += smem_kbar[threadIdx.x + s];
+            for (int c = 0; c < dim_c; ++c) {
+                smem_y[threadIdx.x * dim_c + c] += smem_y[(threadIdx.x + s) * dim_c + c];
+            }
+        }
+        __syncthreads();
+    }
+
+    // 最终结果计算
+    if (threadIdx.x == 0) {
+        // 计算kbar
+        const float kbar_val = 1.0f / (smem_kbar[0] + 1.0f/varianceInit + delta);
+        kbar[global_idx] = kbar_val;
+
+        // 计算ybar
+        for (int c = 0; c < dim_c; ++c) {
+            const int info_idx = ((i * dim_j + j) * dim_k + k) * dim_c + c;
+            ybar[info_idx] = (smem_y[c] + newSe2Info[info_idx]/varianceInit) * kbar_val;
+        }
+    }
+}
+
+
+//========== Interface function ==========
 void computeSe2tDistMatKernelInterface(
     const float* train_data,
     int train_stride0, int train_stride1, int train_stride2, int train_stride3, int train_stride4,
@@ -136,3 +253,43 @@ void computeSe2tDistMatKernelInterface(
     );
 }
 
+void computeSe2tCovSparseKernelInterface(
+    const float* se2tDistMat,
+    const float* kLen,
+    float* output,
+    int num_elements,
+    int num_channels,
+    int blocks,
+    int threads_per_block
+){
+    //begin cuda kernel
+    computeSe2tCovSparseKernel<<<blocks, threads_per_block>>>(
+        se2tDistMat,
+        kLen,
+        output,
+        num_elements,
+        num_channels
+    );
+}
+
+
+// CUDA Kernel 3: Fused kernel for kbar and ybar computation
+void computeYbarKbarInterface(
+    float* se2tKernel,
+    const float* se2tTrainSigma2,
+    const float* se2tTrainY,
+    const float* newSe2Info,
+    float* kbar,
+    float* ybar,
+    float varianceInit,
+    float delta,
+    int dim_i, int dim_j, int dim_k, int dim_l, int dim_c)
+{
+    const int num_blocks = dim_i * dim_j * dim_k;
+    const int block_size = 256;
+    
+    computeYbarKbarFusedKernel<256><<<num_blocks, block_size>>>(
+        se2tKernel, se2tTrainSigma2, se2tTrainY, newSe2Info,
+        kbar, ybar, varianceInit, delta,
+        dim_i, dim_j, dim_k, dim_l, dim_c);
+}

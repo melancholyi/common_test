@@ -412,6 +412,24 @@ torch::Tensor LocalTensorBuffer::computeSe2tKernel(const torch::Tensor& se2tDist
   return se2_kernel;
 }
 
+std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::computeYbarKbar(const torch::Tensor& se2tKernel, const torch::Tensor& se2tTrainSigma2, const torch::Tensor& se2tTrainY, const torch::Tensor& newSe2Info){
+  // se2tKernel:[31, 37, 36, 1620, 1]
+  // se2tTrainSigma2:[31, 37, 36, 1620, 1] //TODO: construct this   
+  // se2tTrainY:[31, 37, 36, 1620, 3]
+  // new_se2Info:[31, 37, 36, 3]
+  // varianceInit_:scalar 1e-4
+  // delta_: 1e-6
+
+  // kbar:[31, 37, 36]
+  // ybar:[31, 37, 36, 4]
+  se2tKernel.div_(se2tTrainSigma2);
+  auto kbar = se2tKernel.sum({-2, -1}, false).unsqueeze(-1) + 1/varianceInit_; //size:[31, 37, 36]
+  auto ybar = (se2tTrainY.mul_(se2tKernel)).sum({-2}, false) + newSe2Info.div(varianceInit_); // size:[31, 37, 36, 4] NOTE: 4 is the se2Info dim  
+  ybar.div_(kbar.add_(delta_));
+  kbar.reciprocal_();
+  return {ybar, kbar};
+}
+
 torch::Tensor LocalTensorBuffer::computeSe2tDistMatCUDAKernel(const torch::Tensor& se2tTrainX, const torch::Tensor& se2tPredX){
   // 输入检查
   TORCH_CHECK(se2tTrainX.dim() == 5, "se2tTrainX must be 5D tensor");
@@ -500,6 +518,46 @@ torch::Tensor LocalTensorBuffer::computeSe2tKernelCUDAKernel(const torch::Tensor
   return output;
 }
 
+std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::computeYbarKbarCUDAKernel(
+    const torch::Tensor& se2tKernel,
+    const torch::Tensor& se2tTrainSigma2,
+    const torch::Tensor& se2tTrainY,
+    const torch::Tensor& newSe2Info,
+    float varianceInit,
+    float delta) {
+    
+    // 参数检查
+    TORCH_CHECK(se2tKernel.is_cuda(), "se2tKernel must be CUDA tensor");
+    TORCH_CHECK(se2tKernel.is_contiguous(), "se2tKernel must be contiguous");
+    TORCH_CHECK(se2tTrainSigma2.is_cuda(), "se2tTrainSigma2 must be CUDA tensor");
+    TORCH_CHECK(se2tTrainY.is_cuda(), "se2tTrainY must be CUDA tensor");
+    TORCH_CHECK(newSe2Info.is_cuda(), "newSe2Info must be CUDA tensor");
+
+    // 获取维度信息
+    int dim_i = se2tKernel.size(0);
+    int dim_j = se2tKernel.size(1);
+    int dim_k = se2tKernel.size(2);
+    int dim_l = se2tKernel.size(3);
+    int dim_c = se2tTrainY.size(4);
+
+    // 准备输出张量
+    auto kbar = torch::zeros({dim_i, dim_j, dim_k}, se2tKernel.options());
+    auto ybar = torch::zeros({dim_i, dim_j, dim_k, dim_c}, se2tKernel.options());
+
+    // 调用接口函数
+    computeYbarKbarInterface(
+        se2tKernel.data_ptr<float>(),
+        se2tTrainSigma2.contiguous().data_ptr<float>(),
+        se2tTrainY.contiguous().data_ptr<float>(),
+        newSe2Info.contiguous().data_ptr<float>(),
+        kbar.data_ptr<float>(),
+        ybar.data_ptr<float>(),
+        varianceInit,
+        delta,
+        dim_i, dim_j, dim_k, dim_l, dim_c);
+
+    return std::make_tuple(ybar, kbar);
+}
 
 torch::Tensor LocalTensorBuffer::batchHandleTensorOperator(std::function<torch::Tensor(const torch::Tensor&)> _operFun, float _funUseGB, const torch::Tensor& _inputTensor) {
   size_t free_bytes, total_bytes;
@@ -527,6 +585,8 @@ torch::Tensor LocalTensorBuffer::batchHandleTensorOperator(std::function<torch::
 
   return result_tensor;
 }
+
+
 
 std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::fuseThroughSpatioTemporalBGKI(const torch::Tensor& new_se2Info, const torch::Tensor& new_gridPos, const float& new_timestamp){
   static MeasureCUDARuntime timer_cuda;
@@ -616,25 +676,30 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::fuseThroughSpatioTem
   // // std::cout << "se2t_kernel[0]" << se2t_kernel[0] << std::endl;
 
   timer_cuda.start();
+
   //PART: 5 BGKI fuse  
   // se2t_kernel:[31, 37, 36, 1620, 1]
-  // se2t_trainY:[31, 37, 36, 1620, 4]
   // se2t_trainSigma2:[31, 37, 36, 1620, 1] //TODO: construct this   
+  // se2t_trainY:[31, 37, 36, 1620, 4]
+  // new_se2Info:[31, 37, 36, 3]
+  // varianceInit_:scalar 1e-4
+  // delta_: 1e-6
 
-  auto se2t_trainSigma2 = torch::ones_like(se2t_kernel).to(device_).to(dtype_);
-  se2t_kernel.div_(se2t_trainSigma2);
-  
-  auto mu0 = new_se2Info; // size:[31, 37, 36, 4]
-  auto sigma20 = torch::ones({mu0.size(0), mu0.size(1), mu0.size(2), 1}).to(device_).to(dtype_);//size:[31, 37, 36, 1] //TODO: optim this  
-  sigma20.mul_(varianceInit_);
+  // kbar:[31, 37, 36]
+  // ybar:[31, 37, 36, 4]
 
-  // auto kbar = /*se2t_kernel.sum({-2, -1}, false).unsqueeze(-1) +*/ 1/sigma20; //size:[31, 37, 36]
-  // auto ybar = /*(se2t_trainY.mul_(se2t_kernel)).sum({-2}, false) +*/ mu0.div(sigma20); // size:[31, 37, 36, 4] NOTE: 4 is the se2Info dim  
-  auto kbar = se2t_kernel.sum({-2, -1}, false).unsqueeze(-1) /*+ 1/sigma20*/; //size:[31, 37, 36]
-  auto ybar = (se2t_trainY.mul_(se2t_kernel)).sum({-2}, false) /*+ mu0.div(sigma20)*/; // size:[31, 37, 36, 4] NOTE: 4 is the se2Info dim  
+  // computeYbarKbar(se2t_kernel, se2t_trainSigma2, new_se2Info, )
 
-  ybar.div_(kbar.add_(delta_));
-  kbar.reciprocal_();
+
+  auto se2t_trainSigma2 = torch::ones_like(se2t_kernel).to(device_).to(dtype_)*varianceInit_;
+
+  // auto [ybar, kbar] = computeYbarKbar(se2t_kernel, se2t_trainSigma2, se2t_trainY, new_se2Info);
+  auto [ybar, kbar] = computeYbarKbarCUDAKernel(se2t_kernel, se2t_trainSigma2, se2t_trainY, new_se2Info, varianceInit_, delta_);
+
+
+
+
+
 
   auto bgkifuse_ms = timer_cuda.end();
   std::cout << "bgkifuse time: " << bgkifuse_ms << " ms" << std::endl;
@@ -642,7 +707,7 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::fuseThroughSpatioTem
   // std::cout << "kbar.sizes(): " << kbar.sizes() << std::endl;
   // std::cout << "ybar.sizes(): " << ybar.sizes() << std::endl;
 
-  std::cout << "ybar-mu0: " << (ybar - mu0).abs().sum() << std::endl;
+  std::cout << "ybar-mu0: " << (ybar - new_se2Info).abs().sum() << std::endl;
   // std::cout << "mu0: " << mu0.abs().sum() << "=? " << 31 * 37 * 36 * 3 << std::endl;
   // std::cout << "ybar: " << ybar.abs().sum() << std::endl;
 
