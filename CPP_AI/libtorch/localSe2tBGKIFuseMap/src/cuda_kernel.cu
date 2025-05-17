@@ -231,7 +231,7 @@ __global__ void computeYbarKbarFusedKernel(
 
 
 //========== Interface function ==========
-void computeSe2tDistMatKernelInterface(
+void computeSe2tDistMatKernelLancher(
     const float* train_data,
     int train_stride0, int train_stride1, int train_stride2, int train_stride3, int train_stride4,
     const float* pred_data,
@@ -253,7 +253,7 @@ void computeSe2tDistMatKernelInterface(
     );
 }
 
-void computeSe2tCovSparseKernelInterface(
+void computeSe2tCovSparseKernelLancher(
     const float* se2tDistMat,
     const float* kLen,
     float* output,
@@ -274,7 +274,7 @@ void computeSe2tCovSparseKernelInterface(
 
 
 // CUDA Kernel 3: Fused kernel for kbar and ybar computation
-void computeYbarKbarInterface(
+void computeYbarKbarLancher(
     float* se2tKernel,
     const float* se2tTrainSigma2,
     const float* se2tTrainY,

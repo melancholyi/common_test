@@ -508,7 +508,7 @@ torch::Tensor LocalTensorBuffer::computeSe2tDistMatCUDAKernel(const torch::Tenso
   auto output_strides = se2t_dist.strides();
 
   // 启动kernel
-  computeSe2tDistMatKernelInterface(
+  computeSe2tDistMatKernelLancher(
       train_ptr,
       train_strides[0], train_strides[1], train_strides[2], train_strides[3], train_strides[4],
       pred_ptr,
@@ -547,7 +547,7 @@ torch::Tensor LocalTensorBuffer::computeSe2tKernelCUDAKernel(const torch::Tensor
   const float* kLen_data = kLenTimeYawGrid_.data_ptr<float>();
   float* output_data = output.data_ptr<float>();
 
-  computeSe2tCovSparseKernelInterface(      
+  computeSe2tCovSparseKernelLancher(      
     se2t_data,
     kLen_data,
     output_data,
@@ -585,7 +585,7 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::computeYbarKbarCUDAK
     auto ybar = torch::zeros({dim_i, dim_j, dim_k, dim_c}, se2tKernel.options());
 
     // 调用接口函数
-    computeYbarKbarInterface(
+    computeYbarKbarLancher(
         se2tKernel.data_ptr<float>(),
         se2tTrainSigma2.contiguous().data_ptr<float>(),
         se2tTrainY.contiguous().data_ptr<float>(),
@@ -733,6 +733,7 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTensorBuffer::fuseThroughSpatioTem
 
   // auto se2t_trainSigma2 = torch::ones_like(se2t_kernel).to(device_).to(dtype_)*varianceInit_;
 
+  se2t_trainVariance.clamp_min_(varianceInit_);
   // auto [ybar, kbar] = computeYbarKbar(se2t_kernel, se2t_trainSigma2, se2t_trainY, new_se2Info);
   auto [ybar, kbar] = computeYbarKbarCUDAKernel(se2t_kernel, se2t_trainVariance, se2t_trainY, new_se2Info, varianceInit_, delta_);
 

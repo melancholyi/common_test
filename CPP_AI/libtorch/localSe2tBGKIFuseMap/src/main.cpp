@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-05-11 10:35:08
- * @LastEditTime: 2025-05-16 15:21:13
+ * @LastEditTime: 2025-05-17 08:02:54
  * @FilePath: /test/CPP_AI/libtorch/localSe2tBGKIFuseMap/src/main.cpp
  * @Description: 
  * @Reference: 
@@ -34,7 +34,7 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   auto dtype_ = torch::kFloat32;
 
   auto yaw_31x1 = (torch::arange(-15, 16).to(dtype_) * res_yaw).unsqueeze(1);
-  // std::cout << "yaw_31x1.sizes(): " << yaw_31x1.sizes() << std::endl;
+  std::cout << "yaw_31x1.sizes(): " << yaw_31x1.sizes() << std::endl;
   // // std::cout << "yaw_31x1: \n" << yaw_31x1 << std::endl; // [-3.0 ~ +3.0]
 
   //PART:1
@@ -48,9 +48,11 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   // LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {1.0, 0.4, 0.8});
 
   //PART:3
-  std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {0.1, 0.0}};
-  std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {1.0, 0.2, 0.8});
+  std::vector<std::pair<double, double>> starts = {{-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {3.7, -3.6}, {-3.7, -3.6}, {-3.7, 3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {3.7, -3.6}, {0.1, 0.0}};
+  std::vector<float> timestamps = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+  
+  LocalTensorBuffer buffer(3, yaw_31x1, res_xy, res_yaw, {10, 0.2, 0.8});
+  int infovalue_dim = 1;
 
 
 
@@ -62,18 +64,18 @@ void testLocalTensorBufferFuseThroughSTBGKI(){
   for(auto & start : starts){
     static int count = -1;
     count++;
-    auto gridPos = generateGridTensor(37, 36, res_xy, start); // 31 x 37 x 36 x 2
+    auto gridPos = generateGridTensor(36, 37, res_xy, start); // 31 x 37 x 36 x 2
     // std::cout << "gridPos[0][0]: \n" << gridPos[0][0] << std::endl;
     // std::cout << "gridPos[36][35]: \n" << gridPos[36][35] << std::endl;
-    // // std::cout << "gridPos: \n" << gridPos << std::endl;
+    std::cout << "gridPos.sizes(): \n" << gridPos.sizes() << std::endl;
     
     // // std::cout << "gridPos.sum():" << gridPos.sum() << std::endl;
     
-    auto se2Info = 1 * torch::ones({31, 37, 36, 3}).to(device_).to(dtype_);// 31 x 37 x 36 x 4, nx ny nz trav  
+    auto se2Info = 1 * torch::ones({31, 36, 37, infovalue_dim}).to(device_).to(dtype_);// 31 x 37 x 36 x 3, nx ny nz trav  
 
     // std::cout << "se2Info.abs().sum(): " << se2Info.abs().sum() << std::endl;
 
-
+    
     buffer.insert(se2Info, gridPos, timestamps[count]);
 
     

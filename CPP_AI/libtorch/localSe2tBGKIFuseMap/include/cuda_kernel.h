@@ -1,7 +1,7 @@
 /*
  * @Author: chasey && melancholycy@gmail.com
  * @Date: 2025-05-15 12:24:49
- * @LastEditTime: 2025-05-16 11:31:22
+ * @LastEditTime: 2025-05-17 03:38:48
  * @FilePath: /test/CPP_AI/libtorch/localSe2tBGKIFuseMap/include/cuda_kernel.h
  * @Description: 
  * @Reference: 
@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-void computeSe2tCovSparseKernelInterface(
+void computeSe2tCovSparseKernelLancher(
     const float* se2tDistMat,
     const float* kLen,
     float* output,
@@ -24,7 +24,7 @@ void computeSe2tCovSparseKernelInterface(
     int threads_per_block
 );
 
-void computeSe2tDistMatKernelInterface(
+void computeSe2tDistMatKernelLancher(
     const float* train_data,
     int train_stride0, int train_stride1, int train_stride2, int train_stride3, int train_stride4,
     const float* pred_data,
@@ -34,7 +34,7 @@ void computeSe2tDistMatKernelInterface(
     int s0, int s1, int s2, int s3,
     int blocks, int threads_per_block);
 
-void computeYbarKbarInterface(
+void computeYbarKbarLancher(
     float* se2tKernel,
     const float* se2tTrainSigma2,
     const float* se2tTrainY,
