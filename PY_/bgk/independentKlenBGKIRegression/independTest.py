@@ -9,7 +9,7 @@ N = 500
 D = 2
 noise_data = 0.01
 optimizer_type = 'Adam'  # 'Adam' or 'LBFGS'
-optim_lr = 0.005
+optim_lr = 0.01
 epochs = 1000
 optim_maxiter = 100
 
@@ -18,8 +18,9 @@ optim_maxiter = 100
 ####################################################
 X_train_rand = torch.rand(N, D) * 10  # NOTE:(100, 2) # random points in [0, 10]x[0, 10]
 X_train = X_train_rand.clone()  # NOTE:(100, 2)
-true_elevation = lambda x: 10 * torch.sin(5*x[:, 0]) + 10 * torch.cos(5 * x[:, 1]) + 10 * x[:, 0] + x[:, 1]
+true_elevation = lambda x: 20 * torch.sin(5*x[:, 0]) + 10 * torch.cos(10 * x[:, 1]) + x[:, 0]**2 + x[:, 1]**2
 y_train = true_elevation(X_train) + torch.randn(N) * noise_data  # NOTE:(100,)
+
 
 ############################################################
 min_val = 0
@@ -48,7 +49,7 @@ def rbf_kernel(X, Z, l):
 def sparseKernel(X, Z, l):
     M2PI = 2 * torch.pi
     cdist = torch.cdist(X, Z)  # 欧氏距离平方
-    cdist /= l
+    cdist /= l.unsqueeze(1)  # kLen : length scale should  shape:[m]
     
     kernel = ((2 + (cdist * M2PI).cos()) * (1 - cdist) / 3.0 + (cdist * M2PI).sin() / M2PI)
     kernel = kernel * (kernel > 0.0)
@@ -114,7 +115,8 @@ def negative_log_mll(params, X, y, mu0, sigma):
 # 4. 超参数优化 (PyTorch LBFGS)
 # 初始化可训练参数
 lambda_ = torch.tensor([0.0001], requires_grad=False, dtype=torch.float32)
-l = torch.tensor([1.0], requires_grad=True, dtype=torch.float32)
+# l = torch.tensor([1.0], requires_grad=True, dtype=torch.float32)
+l = torch.ones(2601, requires_grad=True, dtype=torch.float32)
 # mu0 = torch.mean(y_train).detach()
 mu0 = y_train.detach()
 print(f'mu0: {mu0}')
@@ -133,22 +135,31 @@ def closure():
     optimizer.zero_grad()
     loss = negative_log_mll((lambda_, l), X_train, y_train, mu0, sigma)
     loss.backward()
-    print(f'Loss: {loss.item():.4f}, λ: {lambda_.item():.4f}, l: {l.item():.4f}')
+    
     return loss
 
 # 运行优化
 last_loss = 0
 for i in range(epochs):  # LBFGS可能需要多次调用closure
     loss_now = optimizer.step(closure)
+    print(f'epoch:{i} Loss: {loss_now.item():.4f}')
     if np.abs((loss_now - last_loss).detach().numpy()) < 0.01:
         print(f"break at index: {i}")
         break
 
     last_loss = loss_now
 
-optimal_lambda = lambda_.item() if lambda_.item() > 0.0 else 0.0
-optimal_l = l.item()
-print(f"Optimal lambda: {optimal_lambda:.3f}, Optimal l: {optimal_l:.3f}")
+# Open a file for writing
+with open('output.txt', 'w') as f:
+    # Iterate over the tensor in chunks of 51 elements
+    for i in range(0, len(l), 51):
+        # Get the current chunk of 51 elements
+        chunk = l[i:i+51]
+        # Convert each element to a string with two decimal places
+        formatted_chunk = ["{:.2f}".format(x.item()) for x in chunk]
+        # Join the elements with a space separator and write to the file
+        f.write(' '.join(formatted_chunk) + '\n')
+
 
 # 5. 预测函数 (修正参数顺序)
 def predict(X_train, y_train, X_test, lambda_, l, mu0, sigma):  # <-- 修正参数列表
@@ -169,7 +180,7 @@ y_grid = torch.linspace(0, 10, 51)
 X_test = torch.stack(torch.meshgrid(x_grid, y_grid, indexing='xy'), dim=-1).reshape(-1, 2)  # (900, 2)
 
 # 进行预测 (修正调用参数)
-mu_pred, var_pred = predict(X_train, y_train, X_test, optimal_lambda, optimal_l, mu0, sigma)  # <-- 添加y_train
+mu_pred, var_pred = predict(X_train, y_train, X_test, lambda_, l, mu0, sigma)  # <-- 添加y_train
 
 # 计算MSE
 y_test = true_elevation(X_test)
@@ -200,7 +211,7 @@ ax2 = fig.add_subplot(132, projection='3d')
 surf = ax2.plot_surface(X_mesh, Y_mesh, Z_mesh_pred, cmap='plasma', alpha=0.8)
 ax2.scatter(X_train[:,0].numpy(), X_train[:,1].numpy(), y_train.numpy(), 
            c='r', s=1)
-ax2.set_title(f'Predicted Elevation\nMSE={mse:.2f}, λ={optimal_lambda:.2f}, l={optimal_l:.2f}')
+ax2.set_title(f'Predicted Elevation\nMSE={mse:.2f}')
 fig.colorbar(surf, ax=ax2)
 
 # 不确定度曲面
