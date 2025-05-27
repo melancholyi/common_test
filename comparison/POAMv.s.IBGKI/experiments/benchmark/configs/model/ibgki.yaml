@@ -1,0 +1,6 @@
+name: ibgki
+lr: 0.01
+batch_size: 512
+jitter: 1e-6
+
+
