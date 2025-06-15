@@ -10,7 +10,7 @@ D = 2
 noise_data = 0.01
 optimizer_type = 'Adam' # 'Adam' or 'LBFGS'
 optim_lr = 0.005
-epochs = 1000
+epochs = 200
 optim_maxiter = 1000
 
 # 1. 生成带噪声的3D高程数据 (PyTorch Tensor)
@@ -32,7 +32,7 @@ print("y_train.shape: ", y_train.shape)
 def sparseKernel(X, Z, kLen, kScalar):
     M2PI = 2 * torch.pi
     cdist = torch.cdist(X, Z)  # 欧氏距离平方 [m, n] m:predX.shape, n:trainX.shape
-    print("cdist.shape: ", cdist.shape) 
+    # print("cdist.shape: ", cdist.shape) 
     cdist /= kLen.unsqueeze(1) # kLen : length scale should  shape:[m]
     kernel = ((2 + (cdist * M2PI).cos()) * (1 - cdist) / 3.0 + (cdist * M2PI).sin() / M2PI)
     kernel = kernel * (kernel > 0.0)
@@ -87,7 +87,11 @@ def closure():
     optimizer.zero_grad()
     loss = negative_log_mll((kLen, kScalar), X_train, y_train, mu0, sigma)
     loss.backward()
-    print(f'Loss: {loss.item():.4f}, λ: {lambda_.item():.4f}')
+    
+    if kLen.shape[0] == 1:
+        print(f'Loss: {loss.item():.4f} | kLen:{kLen.item():.4f} | kScalar:{kScalar.item():.4f}')
+    else :
+        print(f'Loss: {loss.item():.4f}')
     return loss
 
 # 运行优化
@@ -103,46 +107,47 @@ for i in range(epochs):  # LBFGS可能需要多次调用closure
 optimal_lambda = lambda_.item() if lambda_.item() > 0.0 else 0.0
 
 
-# #============================================ cutting line ===================================================
-# # ATTENTION: vis Train data(2.5D plot) and vis kLen by using color-map
-# # Reshape y_train to 51x51 for visualization
-# y_train_reshaped = y_train.reshape(51, 51)
+# #============================================ cutting line ==================================================
+if kLen.shape[0] != 1:
+    # ATTENTION: vis Train data(2.5D plot) and vis kLen by using color-map
+    # Reshape y_train to 51x51 for visualization
+    y_train_reshaped = y_train.reshape(51, 51)
 
-# # Create the visualization
-# fig, axs = plt.subplots(1, 3, figsize=(15, 6))  # 1 row, 2 columns
+    # Create the visualization
+    fig, axs = plt.subplots(1, 3, figsize=(15, 6))  # 1 row, 2 columns
 
-# # Plot y_train
-# cax1 = axs[0].imshow(y_train_reshaped, cmap='viridis', extent=[min_val, max_val, min_val, max_val])
-# axs[0].set_title("y_train Visualization")
-# axs[0].set_xlabel("X-axis")
-# axs[0].set_ylabel("Y-axis")
-# fig.colorbar(cax1, ax=axs[0])
+    # Plot y_train
+    cax1 = axs[0].imshow(y_train_reshaped, cmap='viridis', extent=[min_val, max_val, min_val, max_val])
+    axs[0].set_title("y_train Visualization")
+    axs[0].set_xlabel("X-axis")
+    axs[0].set_ylabel("Y-axis")
+    fig.colorbar(cax1, ax=axs[0])
 
-# # Plot l (all ones)
-# # Reshape to [51, 51]
-# kLen_reshaped = kLen.reshape(51, 51)
-# # Convert to numpy array for visualization (required by matplotlib)
-# kLen_numpy = kLen_reshaped.detach().cpu().numpy()  # detach from computation graph and move to CPU
-# cax2 = axs[1].imshow(kLen_numpy, cmap='viridis', extent=[min_val, max_val, min_val, max_val])
-# axs[1].set_title("l Visualization")
-# axs[1].set_xlabel("X-axis")
-# axs[1].set_ylabel("Y-axis")
-# fig.colorbar(cax2, ax=axs[1])
-# # Plot kScalar (all ones)
-# # Reshape to [51, 51]
-# kScalar_reshaped = kScalar.reshape(51, 51)
-# # Convert to numpy array for visualization (required by matplotlib)
-# kScalar_numpy = kScalar_reshaped.detach().cpu().numpy()  # detach from computation graph and move to CPU
-# cax3 = axs[2].imshow(kScalar_numpy, cmap='viridis', extent=[min_val, max_val, min_val, max_val])
-# axs[2].set_title("kScalar Visualization")
-# axs[2].set_xlabel("X-axis")
-# axs[2].set_ylabel("Y-axis")
-# # Add colorbars
-# fig.colorbar(cax3, ax=axs[2])
-# # Adjust layout
-# plt.tight_layout()
-# # Show the plot
-# plt.show()
+    # Plot l (all ones)
+    # Reshape to [51, 51]
+    kLen_reshaped = kLen.reshape(51, 51)
+    # Convert to numpy array for visualization (required by matplotlib)
+    kLen_numpy = kLen_reshaped.detach().cpu().numpy()  # detach from computation graph and move to CPU
+    cax2 = axs[1].imshow(kLen_numpy, cmap='viridis', extent=[min_val, max_val, min_val, max_val])
+    axs[1].set_title("l Visualization")
+    axs[1].set_xlabel("X-axis")
+    axs[1].set_ylabel("Y-axis")
+    fig.colorbar(cax2, ax=axs[1])
+    # Plot kScalar (all ones)
+    # Reshape to [51, 51]
+    kScalar_reshaped = kScalar.reshape(51, 51)
+    # Convert to numpy array for visualization (required by matplotlib)
+    kScalar_numpy = kScalar_reshaped.detach().cpu().numpy()  # detach from computation graph and move to CPU
+    cax3 = axs[2].imshow(kScalar_numpy, cmap='viridis', extent=[min_val, max_val, min_val, max_val])
+    axs[2].set_title("kScalar Visualization")
+    axs[2].set_xlabel("X-axis")
+    axs[2].set_ylabel("Y-axis")
+    # Add colorbars
+    fig.colorbar(cax3, ax=axs[2])
+    # Adjust layout
+    plt.tight_layout()
+    # Show the plot
+    plt.show()
 
 ######################################################## cutting line #####################################################
 
